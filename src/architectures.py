@@ -144,31 +144,34 @@ class ResNetClassifier(nn.Module):
 class ConvAutoencoder(nn.Module):
     """
     Abordagem 4: Autoencoder Convolucional para compressão não supervisionada.
-    Comprime imagens 64x64x3 em um vetor latente compacto Z (k=64 dimensões).
+    Comprime imagens em alta resolução em um vetor latente compacto Z (k=64 dimensões).
     """
-    def __init__(self, latent_dim: int = 64):
+    def __init__(self, latent_dim: int = 64, target_shape: Tuple[int, int] = (360, 480)):
         super().__init__()
-        # Encoder: 64x64x3 -> 8x8x128 -> latent_dim
+        self.target_shape = target_shape
+        # Encoder: Convoluções + AdaptiveAvgPool2d para desacoplar da resolução
         self.encoder_conv = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=4, stride=2, padding=1),   # 32x32
+            nn.Conv2d(3, 32, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # 16x16
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1), # 8x8
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
+            nn.AdaptiveAvgPool2d((8, 8))
         )
         self.flatten = nn.Flatten()
         self.fc_latent = nn.Linear(128 * 8 * 8, latent_dim)
         
-        # Decoder: latent_dim -> 8x8x128 -> 64x64x3
+        # Decoder: Projeção latente + Convoluções Transpostas + Upsample para resolução nativa
         self.fc_decode = nn.Linear(latent_dim, 128 * 8 * 8)
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1), # 16x16
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # 32x32
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),   # 64x64
-            nn.Sigmoid(),  # Força os pixels reconstruídos em [0, 1]
+            nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),
+            nn.Upsample(size=target_shape, mode="bilinear", align_corners=False),
+            nn.Sigmoid(),  # Normaliza pixels reconstruídos em [0, 1]
         )
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:

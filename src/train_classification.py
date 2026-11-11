@@ -117,11 +117,10 @@ def train_deep_model(
 
 
 def train_autoencoder(
-    loaders: dict, latent_dim: int = 64, epochs: int = 20, lr: float = 1e-3, patience: int = 5
+    model: ConvAutoencoder, loaders: dict, epochs: int = 20, lr: float = 1e-3, patience: int = 5
 ) -> Tuple[ConvAutoencoder, dict]:
     """Treina o Autoencoder Convolucional de forma NÃO SUPERVISIONADA (MSE Loss)."""
     print("\n---> Treinando Autoencoder Convolucional (Não Supervisionado)...")
-    model = ConvAutoencoder(latent_dim=latent_dim).to(DEVICE)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
@@ -220,14 +219,37 @@ def plot_combined_confusion_matrices(cms: dict, output_path: Path):
     print(f" -> Matrizes de Confusão salvas em: {output_path}")
 
 
-def run_classification_pipeline():
-    """Executa as 5 abordagens de classificação no conjunto de dados."""
+def run_classification_pipeline(
+    res: str = "480x360",
+    device_arg: str = "auto",
+    batch_size: int = 32,
+    epochs: int = 25
+):
+    """Executa as 5 abordagens de classificação no conjunto de dados parametrizado."""
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Resolução do dispositivo de computação
+    if device_arg == "auto":
+        dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        dev = torch.device(device_arg)
+        
+    global DEVICE
+    DEVICE = dev
     device_name = torch.cuda.get_device_name(0) if DEVICE.type == "cuda" else "CPU Nativa"
     print(f" -> Dispositivo de computação ativo: {DEVICE} ({device_name})")
     
-    loaders, data = prepare_dataset(batch_size=32)
+    # Resolução do target size
+    if res == "64x64":
+        target_size = (64, 64)
+        suffix = "_64x64"
+    else:
+        target_size = (480, 360)
+        suffix = "_480x360"
+        
+    print(f" -> Configuração: Resolução {target_size[0]}x{target_size[1]} | Batch Size {batch_size} | Épocas {epochs}")
+    loaders, data = prepare_dataset(batch_size=batch_size, target_size=target_size)
     y_test = data["y_class_test"]
     
     results = {}
@@ -240,7 +262,7 @@ def run_classification_pipeline():
     X_train_flat = data["X_train"].reshape(len(data["X_train"]), -1)
     X_test_flat = data["X_test"].reshape(len(data["X_test"]), -1)
     
-    rf_raw = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_raw = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     rf_raw.fit(X_train_flat, data["y_class_train"])
     y_pred_rf_raw = rf_raw.predict(X_test_flat)
     
@@ -251,18 +273,19 @@ def run_classification_pipeline():
     # -------------------------------------------------------------
     # Abordagem 4: Autoencoder Convolucional + Random Forest (Z)
     # -------------------------------------------------------------
-    print("\n[Abordagem 4] Autoencoder Convolucional + Random Forest...")
-    ae_path = MODELS_DIR / "autoencoder.pt"
-    ae_model = ConvAutoencoder(latent_dim=64).to(DEVICE)
+    target_h, target_w = data["X_train"].shape[1], data["X_train"].shape[2]
+    print(f"\n[Abordagem 4] Autoencoder Convolucional + Random Forest ({target_w}x{target_h})...")
+    ae_path = MODELS_DIR / f"autoencoder{suffix}.pt"
+    ae_model = ConvAutoencoder(latent_dim=64, target_shape=(target_h, target_w)).to(DEVICE)
     if ae_path.exists():
         print(f" -> Carregando pesos salvos de {ae_path.name}...")
         ae_model.load_state_dict(torch.load(ae_path, map_location=DEVICE))
     else:
-        ae_model, _ = train_autoencoder(loaders, latent_dim=64, epochs=20)
+        ae_model, _ = train_autoencoder(ae_model, loaders, epochs=min(epochs, 20), lr=1e-3)
         torch.save(ae_model.state_dict(), ae_path)
     
     embeddings = extract_embeddings(ae_model, loaders)
-    rf_ae = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_ae = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     rf_ae.fit(embeddings["train"], data["y_class_train"])
     y_pred_rf_ae = rf_ae.predict(embeddings["test"])
     
@@ -273,9 +296,10 @@ def run_classification_pipeline():
     # -------------------------------------------------------------
     # Abordagem 1: MLP / DNN Profunda
     # -------------------------------------------------------------
-    print("\n[Abordagem 1] MLP / DNN Profunda...")
-    mlp_path = MODELS_DIR / "mlp_classifier.pt"
-    mlp_model = MLPClassifier().to(DEVICE)
+    print(f"\n[Abordagem 1] MLP / DNN Profunda ({target_w}x{target_h})...")
+    mlp_path = MODELS_DIR / f"mlp_classifier{suffix}.pt"
+    input_dim = data["X_train"].shape[1] * data["X_train"].shape[2] * data["X_train"].shape[3]
+    mlp_model = MLPClassifier(input_dim=input_dim).to(DEVICE)
     if mlp_path.exists():
         print(f" -> Carregando pesos salvos de {mlp_path.name}...")
         mlp_model.load_state_dict(torch.load(mlp_path, map_location=DEVICE))
@@ -295,8 +319,8 @@ def run_classification_pipeline():
     # -------------------------------------------------------------
     # Abordagem 2: CNN 2D
     # -------------------------------------------------------------
-    print("\n[Abordagem 2] CNN 2D...")
-    cnn_path = MODELS_DIR / "cnn_classifier.pt"
+    print(f"\n[Abordagem 2] CNN 2D ({target_w}x{target_h})...")
+    cnn_path = MODELS_DIR / f"cnn_classifier{suffix}.pt"
     cnn_model = CNNClassifier().to(DEVICE)
     if cnn_path.exists():
         print(f" -> Carregando pesos salvos de {cnn_path.name}...")
@@ -317,8 +341,8 @@ def run_classification_pipeline():
     # -------------------------------------------------------------
     # Abordagem 3: ResNet 2D
     # -------------------------------------------------------------
-    print("\n[Abordagem 3] ResNet 2D...")
-    resnet_path = MODELS_DIR / "resnet_classifier.pt"
+    print(f"\n[Abordagem 3] ResNet 2D ({target_w}x{target_h})...")
+    resnet_path = MODELS_DIR / f"resnet_classifier{suffix}.pt"
     resnet_model = ResNetClassifier().to(DEVICE)
     if resnet_path.exists():
         print(f" -> Carregando pesos salvos de {resnet_path.name}...")
@@ -354,17 +378,37 @@ def run_classification_pipeline():
         print(df_results.to_string())
     
     # Salvar tabela comparativa em CSV
-    csv_out = PROJECT_ROOT / "reports" / "classification_metrics.csv"
+    csv_out = PROJECT_ROOT / "reports" / f"classification_metrics{suffix}.csv"
     df_results.to_csv(csv_out)
+    if suffix:
+        df_results.to_csv(PROJECT_ROOT / "reports" / "classification_metrics.csv")
     print(f" -> Tabela salva em: {csv_out}")
     
     # Salvar Matrizes de Confusão
     ordered_cms = {k: confusion_matrices[k] for k in order}
-    plot_combined_confusion_matrices(
-        ordered_cms, FIGURES_DIR / "confusion_matrices_classification.png"
-    )
+    fig_out = FIGURES_DIR / f"confusion_matrices_classification{suffix}.png"
+    plot_combined_confusion_matrices(ordered_cms, fig_out)
+    if suffix:
+        plot_combined_confusion_matrices(ordered_cms, FIGURES_DIR / "confusion_matrices_classification.png")
     return df_results
 
 
 if __name__ == "__main__":
-    run_classification_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser(description="Pipeline de Classificação - 5 Abordagens de Deep Learning")
+    parser.add_argument("--res", type=str, default="480x360", choices=["64x64", "480x360"],
+                        help="Resolução das thumbnails (padrão: 480x360)")
+    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"],
+                        help="Dispositivo de computação (padrão: auto)")
+    parser.add_argument("--batch-size", type=int, default=32,
+                        help="Tamanho do batch (padrão: 32)")
+    parser.add_argument("--epochs", type=int, default=25,
+                        help="Número máximo de épocas (padrão: 25)")
+    args = parser.parse_args()
+    
+    run_classification_pipeline(
+        res=args.res,
+        device_arg=args.device,
+        batch_size=args.batch_size,
+        epochs=args.epochs
+    )

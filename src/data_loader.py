@@ -96,10 +96,10 @@ def fetch_all_thumbnails(df: pd.DataFrame, max_workers: int = 16) -> pd.DataFram
 
 
 def process_images_and_targets(
-    df: pd.DataFrame, target_size: Tuple[int, int] = (64, 64)
+    df: pd.DataFrame, target_size: Tuple[int, int] = (480, 360)
 ) -> Tuple[np.ndarray, np.ndarray, pd.DataFrame]:
-    """Lê as imagens, redimensiona para 64x64 RGB e normaliza pixels em [0, 1]."""
-    print(f"[3/5] Processando e redimensionando imagens para {target_size} RGB...")
+    """Lê as imagens, preserva a resolução nativa máxima (480x360) RGB e normaliza pixels em [0, 1]."""
+    print(f"[3/5] Processando imagens em alta resolução nativa {target_size} RGB...")
     images = []
     views = []
     kept_rows = []
@@ -108,7 +108,10 @@ def process_images_and_targets(
         img_path = RAW_THUMBNAILS_DIR / f"{row['Video ID']}.jpg"
         try:
             with Image.open(img_path) as img:
-                img_rgb = img.convert("RGB").resize(target_size, Image.Resampling.BILINEAR)
+                if img.size == target_size:
+                    img_rgb = img.convert("RGB")
+                else:
+                    img_rgb = img.convert("RGB").resize(target_size, Image.Resampling.BILINEAR)
                 arr = np.array(img_rgb, dtype=np.float32) / 255.0  # Normalização [0, 1]
                 images.append(arr)
                 views.append(row["Views"])
@@ -116,7 +119,7 @@ def process_images_and_targets(
         except Exception:
             continue
 
-    X = np.stack(images, axis=0)  # Formato: (N, 64, 64, 3)
+    X = np.stack(images, axis=0)  # Formato: (N, H, W, 3)
     y_views = np.array(views, dtype=np.float32)
     clean_df = pd.DataFrame(kept_rows).reset_index(drop=True)
     print(f" -> Tensor gerado: X={X.shape}, y_views={y_views.shape}")
@@ -185,13 +188,31 @@ def get_dataloaders(
     return loaders
 
 
-def prepare_dataset(batch_size: int = 32) -> Tuple[Dict[str, DataLoader], Dict[str, np.ndarray]]:
-    """Função principal que orquestra todo o pipeline do Passo 1.1."""
+def prepare_dataset(
+    batch_size: int = 32, target_size: Tuple[int, int] = (480, 360)
+) -> Tuple[Dict[str, DataLoader], Dict[str, np.ndarray]]:
+    """Função principal que orquestra todo o pipeline com cache rápido em disco."""
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = PROCESSED_DIR / f"dataset_cache_{target_size[0]}x{target_size[1]}.npz"
+
+    if cache_file.exists():
+        print(f" -> Carregando dataset em alta resolução do cache: {cache_file.name}...")
+        cached = np.load(cache_file)
+        data = {k: cached[k] for k in cached.files}
+        data["median_views_train"] = float(data["median_views_train"])
+        loaders = get_dataloaders(data, batch_size=batch_size)
+        print("[5/5] Pipeline de dados concluído com sucesso (via cache)!")
+        return loaders, data
+
     df = download_metadata()
     df_thumbnails = fetch_all_thumbnails(df)
-    X, y_views, clean_df = process_images_and_targets(df_thumbnails)
+    X, y_views, clean_df = process_images_and_targets(df_thumbnails, target_size=target_size)
     data = split_data_anti_leakage(X, y_views)
+    
+    # Salva cache compactado para acelerar execuções futuras
+    np.savez_compressed(cache_file, **data)
+    print(f" -> Cache salvo em: {cache_file}")
+
     loaders = get_dataloaders(data, batch_size=batch_size)
     print("[5/5] Pipeline de dados concluído com sucesso!")
     return loaders, data
