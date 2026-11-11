@@ -249,9 +249,15 @@ def run_classification_pipeline():
     # -------------------------------------------------------------
     # Abordagem 4: Autoencoder Convolucional + Random Forest (Z)
     # -------------------------------------------------------------
-    print("\n[Abordagem 4] Treinando Autoencoder Convolucional + Random Forest...")
-    ae_model, _ = train_autoencoder(loaders, latent_dim=64, epochs=20)
-    torch.save(ae_model.state_dict(), MODELS_DIR / "autoencoder.pt")
+    print("\n[Abordagem 4] Autoencoder Convolucional + Random Forest...")
+    ae_path = MODELS_DIR / "autoencoder.pt"
+    ae_model = ConvAutoencoder(latent_dim=64).to(DEVICE)
+    if ae_path.exists():
+        print(f" -> Carregando pesos salvos de {ae_path.name}...")
+        ae_model.load_state_dict(torch.load(ae_path, map_location=DEVICE))
+    else:
+        ae_model, _ = train_autoencoder(loaders, latent_dim=64, epochs=20)
+        torch.save(ae_model.state_dict(), ae_path)
     
     embeddings = extract_embeddings(ae_model, loaders)
     rf_ae = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -265,9 +271,15 @@ def run_classification_pipeline():
     # -------------------------------------------------------------
     # Abordagem 1: MLP / DNN Profunda
     # -------------------------------------------------------------
+    print("\n[Abordagem 1] MLP / DNN Profunda...")
+    mlp_path = MODELS_DIR / "mlp_classifier.pt"
     mlp_model = MLPClassifier().to(DEVICE)
-    mlp_model, _ = train_deep_model(mlp_model, loaders, epochs=25, lr=1e-3, model_name="MLP / DNN")
-    torch.save(mlp_model.state_dict(), MODELS_DIR / "mlp_classifier.pt")
+    if mlp_path.exists():
+        print(f" -> Carregando pesos salvos de {mlp_path.name}...")
+        mlp_model.load_state_dict(torch.load(mlp_path, map_location=DEVICE))
+    else:
+        mlp_model, _ = train_deep_model(mlp_model, loaders, epochs=25, lr=1e-3, model_name="MLP / DNN")
+        torch.save(mlp_model.state_dict(), mlp_path)
     
     mlp_model.eval()
     with torch.no_grad():
@@ -276,13 +288,20 @@ def run_classification_pipeline():
             preds_mlp.extend(torch.argmax(mlp_model(x_b.to(DEVICE)), dim=1).cpu().numpy())
     results["MLP / DNN"] = evaluate_predictions(y_test, np.array(preds_mlp))
     confusion_matrices["MLP / DNN"] = confusion_matrix(y_test, preds_mlp)
+    print(" -> Concluído!")
     
     # -------------------------------------------------------------
     # Abordagem 2: CNN 2D
     # -------------------------------------------------------------
+    print("\n[Abordagem 2] CNN 2D...")
+    cnn_path = MODELS_DIR / "cnn_classifier.pt"
     cnn_model = CNNClassifier().to(DEVICE)
-    cnn_model, _ = train_deep_model(cnn_model, loaders, epochs=25, lr=1e-3, model_name="CNN 2D")
-    torch.save(cnn_model.state_dict(), MODELS_DIR / "cnn_classifier.pt")
+    if cnn_path.exists():
+        print(f" -> Carregando pesos salvos de {cnn_path.name}...")
+        cnn_model.load_state_dict(torch.load(cnn_path, map_location=DEVICE))
+    else:
+        cnn_model, _ = train_deep_model(cnn_model, loaders, epochs=25, lr=1e-3, model_name="CNN 2D")
+        torch.save(cnn_model.state_dict(), cnn_path)
     
     cnn_model.eval()
     with torch.no_grad():
@@ -291,13 +310,20 @@ def run_classification_pipeline():
             preds_cnn.extend(torch.argmax(cnn_model(x_b.to(DEVICE)), dim=1).cpu().numpy())
     results["CNN"] = evaluate_predictions(y_test, np.array(preds_cnn))
     confusion_matrices["CNN"] = confusion_matrix(y_test, preds_cnn)
+    print(" -> Concluído!")
     
     # -------------------------------------------------------------
     # Abordagem 3: ResNet 2D
     # -------------------------------------------------------------
+    print("\n[Abordagem 3] ResNet 2D...")
+    resnet_path = MODELS_DIR / "resnet_classifier.pt"
     resnet_model = ResNetClassifier().to(DEVICE)
-    resnet_model, _ = train_deep_model(resnet_model, loaders, epochs=25, lr=1e-3, model_name="ResNet 2D")
-    torch.save(resnet_model.state_dict(), MODELS_DIR / "resnet_classifier.pt")
+    if resnet_path.exists():
+        print(f" -> Carregando pesos salvos de {resnet_path.name}...")
+        resnet_model.load_state_dict(torch.load(resnet_path, map_location=DEVICE))
+    else:
+        resnet_model, _ = train_deep_model(resnet_model, loaders, epochs=25, lr=1e-3, model_name="ResNet 2D")
+        torch.save(resnet_model.state_dict(), resnet_path)
     
     resnet_model.eval()
     with torch.no_grad():
@@ -306,6 +332,7 @@ def run_classification_pipeline():
             preds_resnet.extend(torch.argmax(resnet_model(x_b.to(DEVICE)), dim=1).cpu().numpy())
     results["ResNet"] = evaluate_predictions(y_test, np.array(preds_resnet))
     confusion_matrices["ResNet"] = confusion_matrix(y_test, preds_resnet)
+    print(" -> Concluído!")
     
     # -------------------------------------------------------------
     # Consolidação e Exportação dos Resultados
@@ -319,7 +346,10 @@ def run_classification_pipeline():
     ]
     df_results = pd.DataFrame(results).T.loc[order][["Acurácia", "Precisão", "Recall", "Macro-F1"]]
     print("\n================ TABELA COMPARATIVA DE CLASSIFICAÇÃO ================")
-    print(df_results.to_markdown())
+    try:
+        print(df_results.to_markdown())
+    except Exception:
+        print(df_results.to_string())
     
     # Salvar tabela comparativa em CSV
     csv_out = PROJECT_ROOT / "reports" / "classification_metrics.csv"
