@@ -7,13 +7,17 @@ ProjetoUnidade2.pdf
 *Plano*
 
 # ==============================================================================
-# Dados e Cache de Imagens (evitar repositório inchado no Git)
+# Dados Brutos e Cache de Imagens do YouTube (NUNCA subir para o remoto)
 # ==============================================================================
 data/
-*.csv
-*.jpg
-*.jpeg
-*.png
+
+# ==============================================================================
+# Relatórios e Figuras (PERMITIR versionar gráficos PNG e métricas CSV)
+# ==============================================================================
+!reports/
+!reports/**
+!reports/figures/*.png
+!reports/*.csv
 
 # ==============================================================================
 # Modelos e Pesos Treinados (arquivos binários pesados)
