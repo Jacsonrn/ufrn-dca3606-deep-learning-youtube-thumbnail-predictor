@@ -36,7 +36,7 @@ from src.architectures import MLPClassifier, CNNClassifier, ResNetClassifier, Co
 
 MODELS_DIR = PROJECT_ROOT / "models"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
-DEVICE = torch.device("cpu")  # Treinamento otimizado em CPU
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def train_deep_model(
@@ -224,6 +224,8 @@ def run_classification_pipeline():
     """Executa as 5 abordagens de classificação no conjunto de dados."""
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    device_name = torch.cuda.get_device_name(0) if DEVICE.type == "cuda" else "CPU Nativa"
+    print(f" -> Dispositivo de computação ativo: {DEVICE} ({device_name})")
     
     loaders, data = prepare_dataset(batch_size=32)
     y_test = data["y_class_test"]
