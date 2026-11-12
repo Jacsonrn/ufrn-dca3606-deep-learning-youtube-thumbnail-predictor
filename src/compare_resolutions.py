@@ -26,8 +26,8 @@ def generate_comparison():
     csv_480 = REPORTS_DIR / "classification_metrics_480x360.csv"
     
     if not csv_480.exists():
-        # Fallback para pasta reports_a100 se ainda não copiado
-        csv_480 = PROJECT_ROOT / "reports_a100" / "classification_metrics_480x360.csv"
+        # Fallback para pasta reports_gpu_fase_1 se ainda não copiado
+        csv_480 = PROJECT_ROOT / "reports_gpu_fase_1" / "classification_metrics_480x360.csv"
         
     if not csv_64.exists() or not csv_480.exists():
         raise FileNotFoundError(f"Arquivos de métricas não localizados em {REPORTS_DIR}")
