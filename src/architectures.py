@@ -188,3 +188,105 @@ class ConvAutoencoder(nn.Module):
         z = self.encode(x)
         x_recon = self.decode(z)
         return x_recon, z
+
+
+class MLPRegressor(nn.Module):
+    """Abordagem 1: MLP / DNN Profunda para regressão contínua de views."""
+    def __init__(self, input_dim: int = 64 * 64 * 3):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_dim, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            
+            nn.Linear(256, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            
+            nn.Linear(64, 1)  # Saída escalar contínua
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
+class CNNRegressor(nn.Module):
+    """Abordagem 2: Rede Convolucional 2D para regressão contínua."""
+    def __init__(self, in_channels: int = 3):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+        )
+        self.regressor = nn.Sequential(
+            nn.AdaptiveAvgPool2d((4, 4)),
+            nn.Flatten(),
+            nn.Linear(128 * 4 * 4, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 1)  # Saída escalar contínua
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        feat = self.features(x)
+        return self.regressor(feat)
+
+
+class ResNetRegressor(nn.Module):
+    """Abordagem 3: ResNet 2D com Blocos Residuais para regressão contínua."""
+    def __init__(self, in_channels: int = 3):
+        super().__init__()
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True)
+        )
+        self.res1 = ResidualBlock(32)
+        self.down1 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        self.res2 = ResidualBlock(64)
+        self.down2 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True)
+        )
+        self.res3 = ResidualBlock(128)
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.regressor = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 1)  # Saída escalar contínua
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem(x)
+        x = self.res1(x)
+        x = self.down1(x)
+        x = self.res2(x)
+        x = self.down2(x)
+        x = self.res3(x)
+        x = self.pool(x)
+        return self.regressor(x)
