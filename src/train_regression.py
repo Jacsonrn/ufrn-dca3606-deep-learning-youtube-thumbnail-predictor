@@ -243,7 +243,9 @@ def run_regression_pipeline(
     X_train_flat = data["X_train"].reshape(len(data["X_train"]), -1)
     X_test_flat = data["X_test"].reshape(len(data["X_test"]), -1)
     
-    rf_raw = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    rf_raw = RandomForestRegressor(
+        n_estimators=100, max_features="sqrt", random_state=42, n_jobs=-1
+    )
     rf_raw.fit(X_train_flat, y_train_log)
     preds_log_rf_raw = rf_raw.predict(X_test_flat)
     preds_raw_rf_raw = np.maximum(0.0, 10 ** preds_log_rf_raw - 1.0)
