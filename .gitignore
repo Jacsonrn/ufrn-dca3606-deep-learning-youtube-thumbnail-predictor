@@ -8,8 +8,11 @@ ProjetoUnidade2.pdf
 
 # ==============================================================================
 # Dados Brutos e Cache de Imagens do YouTube (NUNCA subir para o remoto)
+# Ignora arquivos de dados e imagens, mas permite rastrear os .gitkeep das pastas
 # ==============================================================================
-data/
+data/**
+!data/**/
+!data/**/.gitkeep
 
 # ==============================================================================
 # Relatórios e Figuras (PERMITIR versionar gráficos PNG e métricas CSV)

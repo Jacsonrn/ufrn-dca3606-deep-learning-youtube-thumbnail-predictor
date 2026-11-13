@@ -128,18 +128,29 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 
 ```text
 .
-├── data/
-│   ├── raw/thumbnails/             # Cache local concorrente das imagens JPEG
-│   └── processed/                  # Tensores particionados e compactados (.npz)
-├── models/                         # Pesos treinados das redes (.pt) e modelos sklearn
+├── data/                           # Cache local e tensores (.gitkeep)
+│   ├── raw/thumbnails/             # Download concorrente das imagens JPEG (.gitkeep)
+│   └── processed/                  # Tensores particionados e compactados (.npz) (.gitkeep)
+├── models/                         # Pesos treinados das redes (.gitkeep; binários .pt ignorados)
 ├── reports/                        # Métricas formais e figuras consolidadas
-│   ├── figures/                    # Gráficos em 300 DPI (barras, matrizes, dispersão, EDA)
-│   ├── classification_metrics.csv  # Tabela exportada de classificação
+│   ├── figures/                    # 13 gráficos em 300 DPI (EDA, Classificação e Regressão)
+│   ├── classification_metrics.csv  # Tabela exportada de classificação (64x64)
+│   ├── classification_metrics_64x64.csv
+│   ├── classification_metrics_480x360.csv
 │   ├── comparison_classification_64x64_vs_480x360.csv
-│   ├── regression_metrics.csv      # Tabela exportada de regressão
+│   ├── regression_metrics.csv      # Tabela exportada de regressão (64x64)
+│   ├── regression_metrics_64x64.csv
+│   ├── regression_metrics_480x360.csv
 │   └── comparison_regression_64x64_vs_480x360.csv
 ├── reports_gpu_fase_1/             # Backup bruto da Classificação e EDA na GPU A100
+│   ├── figures/                    # Figuras geradas exclusivamente na GPU A100
+│   ├── classification_metrics.csv
+│   └── classification_metrics_480x360.csv
 ├── reports_gpu_fase_2/             # Backup bruto da Regressão Contínua na GPU A100
+│   ├── figures/                    # Dispersões e resíduos gerados na GPU A100
+│   ├── regression_metrics.csv
+│   ├── regression_metrics_64x64.csv
+│   └── regression_metrics_480x360.csv
 ├── src/                            # Pipeline de código-fonte modular
 │   ├── architectures.py            # Definições PyTorch (MLP, CNN, ResNet, CAE - Classif/Regr)
 │   ├── compare_resolutions.py      # Comparação pareada de classificação (CPU vs GPU)
