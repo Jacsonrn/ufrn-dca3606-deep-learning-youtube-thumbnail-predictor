@@ -1,0 +1,8 @@
+Modelo,Tarefa,Parâmetros Treináveis,Tamanho Memória (MB),Latência CPU (ms),Throughput CPU (FPS),Latência A100 (ms),Throughput A100 (FPS),Speedup Hardware
+MLPClassifier (64x64),Classificação,6441538,24.57,64.63,1547.3,0.39,255756.5,165.3x
+CNNClassifier (64x64),Classificação,356226,1.36,44.81,2231.4,0.88,113363.2,50.8x
+ResNetClassifier (64x64),Classificação,481698,1.84,107.69,928.6,2.4,41739.4,44.9x
+ConvAutoencoder (64x64),Não-Supervisionado,1387907,5.29,20.17,4958.8,0.77,130104.0,26.2x
+MLPRegressor (64x64),Regressão,6441473,24.57,2.25,44492.1,0.41,246336.5,5.5x
+CNNRegressor (64x64),Regressão,356097,1.36,41.71,2397.3,0.88,114189.3,47.6x
+ResNetRegressor (64x64),Regressão,481569,1.84,115.07,869.0,2.4,41686.0,48.0x

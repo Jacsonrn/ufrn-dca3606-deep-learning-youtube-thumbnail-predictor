@@ -1,0 +1,5 @@
+Tarefa,Representação,Dimensão,Taxa de Compressão,Métrica Principal,Tempo Treino (s)
+Classificação,Pixels Originais (64x64),"d = 12,288",1:1,Acurácia: 56.08%,3.82s
+Classificação,Embedding do AE (Z),k = 64,192:1 (99.48% menor),Acurácia: 59.22%,0.60s
+Regressão,Pixels Originais (64x64),"d = 12,288",1:1,R²_log: 5.61%,4.62s
+Regressão,Embedding do AE (Z),k = 64,192:1 (99.48% menor),R²_log: 3.84%,0.54s
