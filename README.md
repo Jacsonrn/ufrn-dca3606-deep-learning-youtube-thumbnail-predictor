@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/HuggingFace-Dataset-FFD21E?logo=huggingface&logoColor=white" alt="Hugging Face" />
   <img src="https://img.shields.io/badge/Scikit--Learn-Ensemble-F7931E?logo=scikit-learn&logoColor=white" alt="Scikit-Learn" />
   <img src="https://img.shields.io/badge/UFRN-DCA3606-navy" alt="UFRN" />
-  <img src="https://img.shields.io/badge/Status-Dia%201%20e%202%20Conclu%C3%ADdos-success" alt="Status" />
+  <img src="https://img.shields.io/badge/Status-66.7%25%20Conclu%C3%ADdo-success" alt="Status" />
 </p>
 
 Projeto de inteligência artificial aplicada à visão computacional desenvolvido para a disciplina **DCA3606 — Inteligência Artificial** no Departamento de Engenharia de Computação e Automação (DCA) da Universidade Federal do Rio Grande do Norte (UFRN).
