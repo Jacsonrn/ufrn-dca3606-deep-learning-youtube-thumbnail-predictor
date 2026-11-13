@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/HuggingFace-Dataset-FFD21E?logo=huggingface&logoColor=white" alt="Hugging Face" />
   <img src="https://img.shields.io/badge/Scikit--Learn-Ensemble-F7931E?logo=scikit-learn&logoColor=white" alt="Scikit-Learn" />
   <img src="https://img.shields.io/badge/UFRN-DCA3606-navy" alt="UFRN" />
-  <img src="https://img.shields.io/badge/Status-66.7%25%20Conclu%C3%ADdo-success" alt="Status" />
+  <img src="https://img.shields.io/badge/Status-100%25%20Conclu%C3%ADdo-success" alt="Status" />
 </p>
 
 Projeto de inteligência artificial aplicada à visão computacional desenvolvido para a disciplina **DCA3606 — Inteligência Artificial** no Departamento de Engenharia de Computação e Automação (DCA) da Universidade Federal do Rio Grande do Norte (UFRN).
@@ -121,6 +121,52 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 3. **Sensibilidade Viral da ResNet (93,48% de Recall):** A conexão de atalho identidade $\frac{\partial \mathcal{H}}{\partial x} = \frac{\partial \mathcal{F}}{\partial x} + I$ preservou gradientes em alta resolução, tornando a ResNet um detector de alta sensibilidade capaz de identificar quase a totalidade dos virais reais (129 acertos em 138).
 4. **Superioridade Não-Paramétrica do Random Forest:** Com `max_features='sqrt'` ($720$ features por nó), o ensemble de 100 árvores superou todas as redes profundas em alta resolução, atingindo **$61{,}57\%$ de acurácia** na classificação e **$6{,}89\%$ de variância explicada ($R^2_{\log}$)** na regressão contínua.
 5. **O Gargalo Informacional de Shannon no Autoencoder:** O gargalo latente $Z \in \mathbb{R}^{64}$ funcionou adequadamente em $64 \times 64$ ($192:1$), mas em $480 \times 360$ atingiu **$8.100:1$**, forçando o encoder a reter apenas iluminância média e descartando detalhes locais de tipografia e rostos.
+6. **Aceleração de Treinamento no Espaço Latente ($5\times$ a $10\times$):** O treinamento do Random Forest sobre o espaço latente $Z \in \mathbb{R}^{64}$ foi **$5{,}4\times$ mais rápido na classificação** ($1{,}50\text{ s}$ vs $8{,}14\text{ s}$) e **$10{,}2\times$ mais rápido na regressão** ($0{,}92\text{ s}$ vs $9{,}37\text{ s}$), atuando como um filtro de redução de dimensionalidade e ruído.
+7. **Eficiência Paramétrica da CNN vs. Latência da MLP:** A CNN necessita de apenas $356$ mil pesos ($1{,}36\text{ MB}$), ou seja, **$18\times$ menos memória** que a MLP ($6{,}44$ milhões de pesos / $24{,}57\text{ MB}$), embora a MLP execute mais rápido em CPU devido à simplicidade de operações densas contíguas (GEMM).
+
+---
+
+## 🔬 Dia 3: Embeddings, Reconstrução e Custo Computacional
+
+### 1. Efeito da Representação Aprendida (Slide 19 do Roteiro Oficial)
+
+| Tarefa | Representação | Dimensão | Taxa de Compressão | Métrica Principal | Tempo de Treino (s) |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **Classificação** | Atributos Originais ($X$) | $d = 12.288$ | $1:1$ | Acurácia: $56{,}08\%$ | $8{,}14\text{ s}$ |
+| **Classificação** | Embedding do AE ($Z$) | $k = 64$ | **$192:1$ ($99{,}48\%$ menor)** | **Acurácia: $59{,}22\%$** ⭐ | **$1{,}50\text{ s}$ ($5{,}4\times$ mais rápido)** |
+| **Regressão** | Atributos Originais ($X$) | $d = 12.288$ | $1:1$ | $R^2_{\log}: 5{,}61\%$ | $9{,}37\text{ s}$ |
+| **Regressão** | Embedding do AE ($Z$) | $k = 64$ | **$192:1$ ($99{,}48\%$ menor)** | $R^2_{\log}: 3{,}84\%$ | **$0{,}92\text{ s}$ ($10{,}2\times$ mais rápido)** |
+
+<details>
+<summary><b>🔍 Clique para expandir as Provas Visuais do Espaço Latente e Reconstrução</b></summary>
+
+<p align="center">
+  <b>Reconstrução Visual de Thumbnails pelo Autoencoder Convolucional (Original vs Reconstruída)</b><br>
+  <img src="reports/figures/autoencoder_reconstruction_samples.png" width="95%" alt="Amostras de Reconstrução do Autoencoder" />
+</p>
+
+<p align="center">
+  <b>Mapeamento do Espaço Latente Z: PCA (Linear) vs. t-SNE (Não-Linear com Gradiente de Views)</b><br>
+  <img src="reports/figures/latent_space_tsne_pca.png" width="90%" alt="Projeções PCA e t-SNE" />
+</p>
+</details>
+
+### 2. Benchmark de Custo Computacional e Latência de Inferência (Slide 14 do Roteiro Oficial)
+
+| Modelo | Tarefa | Parâmetros Treináveis | Memória dos Pesos | Latência (Lote de 100 imgs) | Throughput (FPS) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **MLP Classifier** | Classificação | $6.441.538$ | $24{,}57\text{ MB}$ | $87{,}24\text{ ms}$ | $1.146{,}3\text{ FPS}$ |
+| **CNN Classifier** | Classificação | **$356.226$ ($18\times$ menor)** | **$1{,}36\text{ MB}$** | $1.751{,}07\text{ ms}$ | $57{,}1\text{ FPS}$ |
+| **ResNet Classifier** | Classificação | $481.698$ | $1{,}84\text{ MB}$ | $4.157{,}26\text{ ms}$ | $24{,}1\text{ FPS}$ |
+| **ConvAutoencoder** | Não-Superv. | $1.387.907$ | $5{,}29\text{ MB}$ | $1.109{,}13\text{ ms}$ | $90{,}2\text{ FPS}$ |
+| **MLP Regressor** | Regressão | $6.441.473$ | $24{,}57\text{ MB}$ | $63{,}57\text{ ms}$ | $1.573{,}0\text{ FPS}$ |
+| **CNN Regressor** | Regressão | **$356.097$ ($18\times$ menor)** | **$1{,}36\text{ MB}$** | $725{,}72\text{ ms}$ | $137{,}8\text{ FPS}$ |
+| **ResNet Regressor** | Regressão | $481.569$ | $1{,}84\text{ MB}$ | $3.064{,}68\text{ ms}$ | $32{,}6\text{ FPS}$ |
+
+<p align="center">
+  <b>Trade-off Custo vs. Latência: Parâmetros Treináveis vs. Tempo de Inferência</b><br>
+  <img src="reports/figures/computational_cost_vs_accuracy.png" width="80%" alt="Custo Computacional vs Latência" />
+</p>
 
 ---
 
@@ -133,7 +179,7 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 │   └── processed/                  # Tensores particionados e compactados (.npz) (.gitkeep)
 ├── models/                         # Pesos treinados das redes (.gitkeep; binários .pt ignorados)
 ├── reports/                        # Métricas formais e figuras consolidadas
-│   ├── figures/                    # 13 gráficos em 300 DPI (EDA, Classificação e Regressão)
+│   ├── figures/                    # 17 gráficos em 300 DPI (EDA, Classificação, Regressão, Embeddings e Custo)
 │   ├── classification_metrics.csv  # Tabela exportada de classificação (64x64)
 │   ├── classification_metrics_64x64.csv
 │   ├── classification_metrics_480x360.csv
@@ -141,7 +187,9 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 │   ├── regression_metrics.csv      # Tabela exportada de regressão (64x64)
 │   ├── regression_metrics_64x64.csv
 │   ├── regression_metrics_480x360.csv
-│   └── comparison_regression_64x64_vs_480x360.csv
+│   ├── comparison_regression_64x64_vs_480x360.csv
+│   ├── embedding_representation_effect.csv # Tabela oficial do Slide 19
+│   └── computational_cost_benchmark.csv   # Tabela oficial do Slide 14
 ├── reports_gpu_fase_1/             # Backup bruto da Classificação e EDA na GPU A100
 │   ├── figures/                    # Figuras geradas exclusivamente na GPU A100
 │   ├── classification_metrics.csv
@@ -152,7 +200,9 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 │   ├── regression_metrics_64x64.csv
 │   └── regression_metrics_480x360.csv
 ├── src/                            # Pipeline de código-fonte modular
+│   ├── analyze_embeddings.py       # Extração de embeddings Z, PCA/t-SNE 2D e reconstrução visual
 │   ├── architectures.py            # Definições PyTorch (MLP, CNN, ResNet, CAE - Classif/Regr)
+│   ├── benchmark_computational_cost.py # Benchmark de parâmetros, latência (100 imgs) e throughput
 │   ├── compare_resolutions.py      # Comparação pareada de classificação (CPU vs GPU)
 │   ├── compare_regression.py       # Comparação pareada de regressão (CPU vs GPU)
 │   ├── data_loader.py              # Download concorrente e partição sem leakage
@@ -160,7 +210,7 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 │   ├── train_classification.py     # Pipeline de classificação com interface CLI (--res, --device)
 │   └── train_regression.py         # Pipeline de regressão contínua com interface CLI (--res, --device)
 ├── job.sh                          # Script de submissão em lotes via SLURM para cluster
-├── Fundamentacao_Teorica.md        # Teoria exaustiva, formulações e 30 questões de arguição oral
+├── Fundamentacao_Teorica.md        # Teoria exaustiva, formulações e 40 questões de arguição oral
 ├── requirements.txt                # Dependências com travas de versão
 └── README.md                       # Apresentação do projeto e instruções de reprodução
 ```
@@ -209,7 +259,16 @@ python src/train_regression.py --res 480x360 --device auto --batch-size 32 --epo
 python src/compare_regression.py
 ```
 
-### 4. Execução em Cluster Supercomputador (SLURM)
+### 4. Análise de Embeddings e Custo Computacional (Dia 3)
+```bash
+# Análise de embeddings, reconstrução visual e projeções 2D (PCA e t-SNE):
+python src/analyze_embeddings.py
+
+# Benchmark formal de parâmetros, tamanho de memória e latência de inferência:
+python src/benchmark_computational_cost.py
+```
+
+### 5. Execução em Cluster Supercomputador (SLURM)
 ```bash
 sbatch job.sh
 ```
@@ -228,8 +287,12 @@ sbatch job.sh
   - Implementação das cabeças regressoras (MLP, CNN, ResNet, RF Embeddings e RF Pixels).
   - Avaliação multi-resolução com MAE, RMSE e Coeficiente $R^2_{\log}$ na CPU e GPU A100.
   - Gráficos de dispersão Real vs. Previsto e análise de resíduos homocedásticos.
-- [ ] **Dia 3: Estudo de Ablação, Consolidação Final e Artigo Técnico**
-  - Ajuste fino de hiperparâmetros e análise crítica de erros residuais.
+- [x] **Dia 3: Embeddings, Benchmark de Custo e Slides da Apresentação (Concluído)**
+  - Análise de reconstrução visual do Autoencoder (Taxa 192:1) e projeções 2D PCA/t-SNE.
+  - Tabela do efeito da representação aprendida (Slide 19) com aceleração de treino de até $10\times$.
+  - Benchmark formal de custo computacional (Parâmetros, Memória, Latência e Throughput).
+  - Roteiro estruturado da apresentação em 16 slides pedagógicos (`Apresentacao_Slides.md`).
+  - Banco de 40 questões de arguição oral com respostas exaustivas (`Fundamentacao_Teorica.md`).
 
 ---
 

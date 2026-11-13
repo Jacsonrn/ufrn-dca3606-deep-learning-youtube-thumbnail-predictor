@@ -223,3 +223,104 @@ O modelo prevê o alcance do vídeo dentro de um fator médio de $\approx 7 \tim
 
 15. **Como as predições na escala logarítmica são convertidas para visualizações no mundo real?**
     * *Resposta esperada:* Invertendo a padronização via desvio e média do treino ($\hat{y}_{\log} = \hat{z} \cdot \sigma + \mu$) e aplicando a função exponencial inversa com corte não-negativo: $\widehat{\text{views}} = \max(0, \; 10^{\hat{y}_{\log}} - 1)$.
+
+---
+
+# 🟨 DIA 3: Análise dos Embeddings, Teoria da Informação de Shannon e Custo Computacional
+
+## 1. Compressão Latente e a Teoria de Rate-Distortion de Shannon
+
+O Autoencoder Convolucional treinado na Abordagem 4 opera sob os preceitos da **Teoria de Codificação com Perda (*Lossy Source Coding*) de Claude Shannon**. O objetivo da rede é aprender duas funções parametrizadas:
+$$\text{Encoder: } f_\theta : \mathcal{X} \to \mathcal{Z}, \quad \text{com } \mathcal{X} \subset \mathbb{R}^d, \; \mathcal{Z} \subset \mathbb{R}^k \; (k \ll d)$$
+$$\text{Decoder: } g_\phi : \mathcal{Z} \to \hat{\mathcal{X}}, \quad \text{onde } \hat{X} \approx X$$
+
+A minimização da perda empírica sob a norma $\mathcal{L}_2$ (MSE):
+$$\mathcal{L}_{\text{recon}}(\theta, \phi) = \frac{1}{N} \sum_{i=1}^N \| X_i - g_\phi(f_\theta(X_i)) \|_2^2$$
+
+Força o vetor latente $Z \in \mathbb{R}^{64}$ a reter as componentes de maior energia do sinal espectral da imagem. 
+
+### A Taxa de Compressão de Informação ($d \to k$)
+* Em $64 \times 64 \times 3$: $d = 12.288 \implies \text{Compressão} = \frac{12.288}{64} = 192:1$ (eliminação de $99{,}48\%$ da dimensionalidade).
+* Em $480 \times 360 \times 3$: $d = 518.400 \implies \text{Compressão} = \frac{518.400}{64} = 8.100:1$ (eliminação de $99{,}988\%$).
+
+Pelo Teorema da Taxa de Distorção $R(D)$, ao comprimir agressivamente para 64 números reais, o encoder é matematicamente forçado a codificar **iluminância média, paleta cromática dominante e silhuetas macroscópicas**, descartando detalhes de alta frequência espacial (como tipografia de títulos embutidos e expressões de micro-olhares), os quais são cruciais para o usuário humano decidir clicar no vídeo.
+
+---
+
+## 2. Geometria de Variedades: PCA vs. t-SNE no Espaço Latente
+
+Para inspecionar a topologia do espaço $\mathcal{Z} \subset \mathbb{R}^{64}$, aplicamos duas técnicas com premissas matemáticas distintas:
+
+### 2.1 Análise de Componentes Principais (PCA — Linear Global)
+O PCA computa a decomposição espectral da matriz de covariância empírica de $\mathbf{Z} \in \mathbb{R}^{N \times 64}$:
+$$\Sigma = \frac{1}{N} (\mathbf{Z} - \bar{\mathbf{Z}})^T (\mathbf{Z} - \bar{\mathbf{Z}}) = \mathbf{V} \mathbf{\Lambda} \mathbf{V}^T$$
+Onde $\mathbf{V}$ contém os autovetores ortonormais e $\mathbf{\Lambda} = \text{diag}(\lambda_1, \dots, \lambda_{64})$ contém as variâncias decrescentes. A projeção 2D projeta sobre os dois autovetores de maior autovalor, maximizando a dispersão global:
+$$\mathbf{Z}_{\text{PCA}} = (\mathbf{Z} - \bar{\mathbf{Z}}) \mathbf{V}_{[:, :2]}$$
+* **Limitação:** Como a transformação é uma rotação rígida ortogonal, ela falha em desenrolar variedades não-lineares intrínsecas da representação visual.
+
+### 2.2 t-Distributed Stochastic Neighbor Embedding (t-SNE — Não-Linear Local)
+O t-SNE modela as distâncias euclidianas no espaço $\mathbb{R}^{64}$ como probabilidades condicionais gaussianas:
+$$p_{j|i} = \frac{\exp(-\|z_i - z_j\|^2 / 2\sigma_i^2)}{\sum_{k \neq i} \exp(-\|z_i - z_k\|^2 / 2\sigma_i^2)}, \quad p_{ij} = \frac{p_{j|i} + p_{i|j}}{2N}$$
+No espaço de baixa dimensão $\mathbb{R}^2$, utiliza a distribuição de Cauchy ($t$-Student com 1 grau de liberdade) para mitigar o problema de aglomeração (*crowding problem*):
+$$q_{ij} = \frac{(1 + \|y_i - y_j\|^2)^{-1}}{\sum_k \sum_{l \neq k} (1 + \|y_k - y_l\|^2)^{-1}}$$
+A configuração dos pontos $\mathbf{Y} \in \mathbb{R}^{N \times 2}$ é otimizada minimizando a **Divergência de Kullback-Leibler**:
+$$\mathcal{L}_{\text{t-SNE}} = D_{KL}(P \parallel Q) = \sum_{i \neq j} p_{ij} \log \left( \frac{p_{ij}}{q_{ij}} \right)$$
+O gradiente resultante atua como forças elásticas de atração entre pontos semanticamente próximos e repulsão para pontos distantes, revelando agrupamentos locais e a continuidade do gradiente de views.
+
+---
+
+## 3. Custo Computacional, Complexidade Algorítmica e Latência
+
+### 3.1 Parâmetros e Complexidade Estrutural
+* **MLP Densa:** A primeira camada linear acopla todos os pixels com 512 neurônios:
+  $$\mathcal{P}_{\text{MLP}_1} = (d \times H_1) + H_1 = (12.288 \times 512) + 512 = 6.291.968 \text{ pesos}$$
+  Totalizando **6,44 milhões de parâmetros** (24,57 MB). A MLP não explora invariância translacional.
+* **CNN Convolucional 2D:** Utiliza compartilhamento espacial de pesos (*weight sharing*):
+  $$\mathcal{P}_{\text{Conv}} = (C_{\text{out}} \times C_{\text{in}} \times K_h \times K_w) + C_{\text{out}}$$
+  Totalizando apenas **356 mil parâmetros** (1,36 MB) — **$18\times$ menos parâmetros que a MLP**.
+* **ResNet 2D:** Adiciona blocos residuais sem aumentar a complexidade paramétrica excessivamente, totalizando **481 mil parâmetros** (1,84 MB).
+
+### 3.2 O Paradoxo de Latência de Inferência vs. Quantidade de Parâmetros
+O benchmark formal em CPU revelou que:
+* **MLP:** Latência de $63$ a $87\text{ ms}$ para 100 imagens ($1.146$ a $1.573\text{ FPS}$).
+* **CNN:** Latência de $725$ a $1.751\text{ ms}$ para 100 imagens ($57$ a $138\text{ FPS}$).
+* **ResNet:** Latência de $3.064$ a $4.157\text{ ms}$ para 100 imagens ($24$ a $33\text{ FPS}$).
+
+> [!NOTE]
+> **Explicação Teórica:** Em arquiteturas de CPU modernas (x86 com instruções AVX-512), a MLP executa uma multiplicação densa contígua de matrizes (GEMM - *General Matrix Multiply*), atingindo máxima eficiência de pipeline de registradores. Já as redes convolucionais e residuais demandam expansão em memória de tensores via `im2col` e múltiplas operações de pooling e ramificação de grafo computacional, resultando em maior latência temporal apesar de utilizarem $18\times$ menos memória estática.
+
+---
+
+## 4. Banco de Arguição Oral — Dia 3: Embeddings e Custo Computacional (Questões 31 a 40)
+
+31. **O que é o gargalo latente $Z$ e qual é a função da camada Sigmoid no final do Decoder?**
+    * *Resposta esperada:* O gargalo latente $Z \in \mathbb{R}^{64}$ é a menor camada do autoencoder, cuja dimensão reduzida força a rede a descartar ruídos e reter apenas as características determinantes para a reconstrução. A ativação Sigmoid no final do decoder é mandatória porque os tensores de entrada foram normalizados no intervalo $[0, 1]$, garantindo que as intensidades dos canais RGB reconstruídos estejam limitadas a esse mesmo espaço físico contínuo.
+
+32. **Por que o modelo clássico Random Forest treinado sobre os embeddings $Z$ foi de $5\times$ a $10\times$ mais rápido do que treinado sobre os pixels $X$?**
+    * *Resposta esperada:* Devido à complexidade computacional da divisão de nós em árvores de decisão. Para $N$ amostras e dimensão $D$, avaliar os pontos de corte candidatos custa $\mathcal{O}(N \cdot D \log N)$. Ao reduzir a dimensão de $d = 12.288$ para $k = 64$ ($192\times$ menor), o número de atributos avaliados em cada nó decai drasticamente, reduzindo o tempo de treinamento de $8{,}14\text{ s}$ para $1{,}50\text{ s}$ na classificação e de $9{,}37\text{ s}$ para $0{,}92\text{ s}$ na regressão.
+
+33. **Por que o Autoencoder gerou uma acurácia maior em classificação com Random Forest ($59{,}22\%$) do que o Random Forest com pixels brutos ($56{,}08\%$) em 64x64?**
+    * *Resposta esperada:* Porque a compressão latente atuou como um **filtro regularizador de remoção de ruído (*denoising/manifold filtering*)**. Os pixels brutos de uma imagem redimensionada para $64 \times 64$ contêm ruídos de interpolação e redundância espacial que podem iludir as árvores. As convoluções do encoder sintetizaram feições visuais agregadas, facilitando a partição ortogonal do ensemble.
+
+34. **Por que o PCA e o t-SNE apresentaram distribuições visuais diferentes para os mesmos embeddings $Z$?**
+    * *Resposta esperada:* Porque o PCA é um método linear que busca eixos ortogonais de máxima variância global, tendendo a aglomerar pontos em uma nuvem elipsoidal contínua quando a variedade subjacente é não-linear. O t-SNE, por sua vez, é um método estocástico não-linear baseado em divergência de Kullback-Leibler que prioriza a conservação das probabilidades de vizinhança local, conseguindo separar variedades dobradas em agrupamentos semânticos mais nítidos.
+
+35. **Qual é a função da distribuição $t$-Student no espaço projetado do t-SNE e por que não se usa uma Gaussiana em 2D?**
+    * *Resposta esperada:* Para resolver o "problema de aglomeração" (*crowding problem*). Em alta dimensão ($64D$), há um volume hiperesférico imenso para acomodar pontos moderadamente distantes. Em 2D, a área disponível é muito menor. A distribuição $t$-Student possui caudas muito mais pesadas ($1 / (1 + d^2)$) que a Gaussiana ($e^{-d^2}$), o que repele pontos moderadamente distantes para a periferia, abrindo espaço visual para que agrupamentos locais não fiquem todos sobrepostos no centro da projeção.
+
+36. **O que a análise visual de reconstrução (painel Original vs. Reconstruída) evidenciou sobre a representação aprendida?**
+    * *Resposta esperada:* Evidenciou que o Autoencoder convolucional prioriza grandezas de baixa frequência espacial (luminância média, blocos de cor quente vs. fria e silhuetas de rostos), mas borra e perde completamente letras de fontes pequenas e textos estilizados. Isso ocorre porque o critério MSE calcula a média quadrática pixel a pixel, penalizando severamente o erro em grandes áreas coloridas e tratando o texto fino como ruído de alta frequência estatisticamente irrelevante.
+
+37. **Por que a MLP possui 18 vezes mais parâmetros que a CNN, mas apresentou latência de inferência cerca de 20 vezes menor em CPU?**
+    * *Resposta esperada:* Porque uma camada linear totalmente conectada é uma operação direta de multiplicação matriz-vetor (GEMM) que é altamente otimizada em hardware com paralelismo SIMD (como SSE/AVX em CPUs x86). Já as convoluções 2D exigem aninhamento de loops, transformações de janela (`im2col`), e camadas intermediárias de `BatchNorm` e `MaxPool`, demandando mais saltos de ponteiros de memória (*memory bandwidth*) e profundidade de grafo computacional, resultando em maior latência temporal.
+
+38. **O que é o Throughput de inferência (medido em FPS) e por que ele deve ser avaliado junto com a latência?**
+    * *Resposta esperada:* A latência mede o tempo de resposta pontual de uma requisição (quanto tempo 1 batch leva para sair), enquanto o Throughput (Frames Per Second) mede a capacidade total de vazão do sistema ($N / \Delta t$). Em sistemas de recomendação em tempo real do YouTube que precisam filtrar milhões de thumbnails por segundo, um modelo com throughput de $1.500\text{ FPS}$ (como a MLP) pode ser preferível em pré-filtragem, enquanto um modelo de alta precisão e menor throughput (como a ResNet a $32\text{ FPS}$) é reservado para o ranqueamento final.
+
+39. **Por que a ResNet 2D apresentou a maior latência de inferência entre todas as arquiteturas avaliadas?**
+    * *Resposta esperada:* Devido à complexidade do grafo computacional e aos blocos residuais. A cada bloco residual, o tensor precisa ser bifurcado, processado por duas convoluções consecutivas com normalização e depois somado ponto a ponto com o fluxo de identidade ($F(x) + x$). Essa adição residual e a profundidade de camadas exigem mais alocações de tensores intermediários e sincronizações de memória, elevando o tempo de execução por lote.
+
+40. **Diante de todos os resultados (Acurácia, $R^2$, Embeddings e Latência), qual solução arquitetural você defenderia como a mais viável para a indústria?**
+    * *Resposta esperada:* Defenderia uma **arquitetura híbrida em dois estágios**:
+      1. Para **Classificação de Virais de Alto Risco**, a **ResNet 2D** é a escolha ideal, pois seu recall de $93{,}48\%$ garante que quase nenhum conteúdo de alto potencial seja descartado.
+      2. Para **Regressão Contínua em Larga Escala**, o **Random Forest** calibrado com `max_features='sqrt'` em alta resolução (ou treinado sobre embeddings latentes $Z$) oferece a melhor relação custo-benefício, entregando o maior $R^2_{\log}$ ($+6{,}89\%$) com treinamento em frações de segundo e imunidade a problemas de convergência por gradiente.
