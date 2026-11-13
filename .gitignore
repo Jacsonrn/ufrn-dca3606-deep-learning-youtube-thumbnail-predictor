@@ -1,11 +1,13 @@
 # ==============================================================================
-# Documentos Locais e Planejamento (NUNCA subir para o remoto)
+# Documentos Locais e Apresentação (NUNCA subir para o remoto)
 # ==============================================================================
 Plano Execucao 3 dias.txt
 ProjetoUnidade2.pdf
 *.pdf
 *Plano*
 Apresentacao_Slides.md
+*.pptx
+src/generate_presentation_pptx.py
 
 # ==============================================================================
 # Dados Brutos e Cache de Imagens do YouTube (NUNCA subir para o remoto)
