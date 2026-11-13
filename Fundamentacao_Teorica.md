@@ -123,3 +123,103 @@ permite ao ensemble de 100 árvores encontrar limiares de decisão independentes
 
 15. **Qual é o papel da aceleração por GPU no pipeline em alta resolução nativa?**
     * *Resposta esperada:* A GPU executa operações tensoriais em arquitetura massivamente paralela (SIMT), reduzindo o tempo de processamento de convoluções e retropropagação de várias horas em CPU para menos de dois minutos.
+
+
+---
+
+# 📅 DIA 2: Pipeline de Regressão Contínua (Previsão do Número Real de Views)
+
+No segundo dia, abordamos o desafio de prever diretamente a quantidade contínua de visualizações ($y \in \mathbb{R}^+$) a partir da thumbnail, enfrentando a forte assimetria das distribuições de cauda pesada (*Power-Law*) típicas de plataformas de compartilhamento de vídeo.
+
+---
+
+### 📊 Tabela Empírica Consolidada de Regressão: 64x64 (CPU) vs. 480x360 (A100)
+
+| Modelo | R² Log (64x64) | R² Log (480x360) | Δ R² Log | MAE Log (64x64) | MAE Log (480x360) | Δ MAE Log | MAE Real (480x360) | Veredito Científico |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Random Forest (Pixels)** | +4,06% | **+6,89%** | **+2,82%** | 0,8635 | **0,8457** | **-0,0178** | **24.127.787** | 🏆 **Campeão Geral:** Maior ganho com nitidez de alta resolução (+69% no R²). |
+| **CNN 2D** | -0,27% | **+3,02%** | **+3,29%** | 0,8818 | **0,8687** | **-0,0132** | 24.193.754 | 🚀 **Melhor Rede Neural:** Virou de R² negativo para positivo com resolução nativa. |
+| **MLP / DNN** | **+4,92%** | +2,24% | **-2,68%** | **0,8456** | 0,8546 | +0,0090 | 24.143.606 | 📉 **Degradação Dimensional:** Perdeu metade do R² devido aos 265M de parâmetros. |
+| **ResNet 2D** | +0,07% | -1,08% | -1,15% | 0,8832 | 0,8876 | +0,0044 | 24.227.226 | ⚠️ Gradientes residuais geraram maior variância pontual em alvos contínuos. |
+| **RF (Embeddings AE)** | -10,90% | -10,46% | +0,44% | 0,9354 | 0,9187 | -0,0167 | 24.265.423 | 🛑 Gargalo de compressão 8.100:1 eliminou feições contínuas de engajamento. |
+
+---
+
+### 📚 Fundamentação Teórica da Regressão Contínua
+
+#### 1. A Matemática da Distribuição de Cauda Pesada (*Power-Law / Pareto*)
+Em sistemas de mídia social, o consumo de conteúdo segue uma distribuição livre de escala: a grande maioria dos vídeos acumula poucos milhares de acessos, enquanto uma fração ínfima de vídeos virais ultrapassa dezenas de milhões de visualizações.  
+Se o Erro Quadrático Médio ($\text{MSE}$) fosse minimizado diretamente na escala linear:
+$$\mathcal{L} = \frac{1}{N} \sum_{i=1}^N (y_i - \hat{y}_i)^2 \implies \frac{\partial \mathcal{L}}{\partial \hat{y}_i} = -2(y_i - \hat{y}_i)$$
+Para um vídeo com $y_i = 100.000.000$, um erro de $20\%$ gera um gradiente de magnitude $4 \times 10^7$, enquanto para um vídeo com $y_i = 10.000$, o mesmo erro percentual gera um gradiente de apenas $4 \times 10^3$ (uma disparidade de **$10.000 \times$**). O otimizador Adam seria monopolizado pelos outliers virais, desestabilizando os pesos da rede.
+
+#### 2. Estabilização de Variância por Transformação Logarítmica
+Para restaurar a **homocedasticidade** (variância constante dos resíduos ao longo de toda a reta preditiva), aplicamos a transformação monotônica estrita:
+$$y_{\log} = \log_{10}(\text{views} + 1)$$
+Em seguida, ajustamos um `StandardScaler` $(\mu_{\text{treino}}, \sigma_{\text{treino}})$ **exclusivamente sobre o conjunto de Treino**:
+$$z_{\text{treino}} = \frac{y_{\log} - \mu_{\text{treino}}}{\sigma_{\text{treino}}}$$
+Isso projeta a variável-alvo em uma distribuição padronizada $\sim \mathcal{N}(0, 1)$, permitindo convergência estável das redes neurais.
+
+#### 3. Por que o $R^2$ Linear é Negativo e o $R^2_{\log}$ é Positivo?
+O Coeficiente de Determinação é definido formalmente por:
+$$R^2 = 1 - \frac{\sum (y_i - \hat{y}_i)^2}{\sum (y_i - \bar{y})^2}$$
+Na escala linear bruta, o erro quadrático em vídeos com centenas de milhões de visualizações explode a soma dos quadrados dos resíduos ($\text{SS}_{\text{res}}$), tornando-a maior do que a variância amostral ($\text{SS}_{\text{tot}}$) e resultando em $R^2 \approx -0{,}008$.  
+Na escala $\log_{10}$, os resíduos são homocedásticos, revelando que o **Random Forest explica 6,89% de toda a variância** e a **CNN explica 3,02%**, demonstrando capacidade preditiva genuína a partir de sinais visuais.
+
+#### 4. Interpretação Física do $\text{MAE}_{\log} \approx 0{,}845$ dex
+Em física e ciência de dados astronômicos, a unidade logarítmica base 10 é denominada **dex**. Um erro absoluto médio de $0{,}8457$ dex indica que:
+$$\frac{\widehat{\text{views}}}{\text{views}} \approx 10^{\pm 0{,}8457} \approx [0{,}14; \; 7{,}0]$$
+O modelo prevê o alcance do vídeo dentro de um fator médio de $\approx 7 \times$. Dado que o espaço amostral abrange 6 ordens de magnitude ($10^3$ a $10^9$), restringir a predição a menos de uma ordem de grandeza analisando apenas uma imagem estática comprova o aprendizado de padrões reais de interesse visual.
+
+#### 5. Interpolação Contínua (*Piecewise Linear*) vs. Função Degrau (*Piecewise Constant*)
+* **Random Forest:** Composto por árvores ortogonais que calculam a média das folhas, formando uma **função degrau**. Em $64 \times 64$, sua incapacidade de interpolar finamente fez a MLP superá-lo ligeiramente; em $480 \times 360$, a riqueza de limiares visuais finos permitiu ao ensemble atingir o ápice de $R^2_{\log} = 6{,}89\%$.
+* **Redes Neurais (MLP e CNN):** Produzem uma **superfície contínua por partes**. Enquanto a MLP colapsou em $480 \times 360$ pela explosão de 265 milhões de parâmetros, a CNN 2D manteve estabilidade com pooling adaptativo (`AdaptiveAvgPool2d((4, 4))`), saltando de $R^2$ negativo para $+3{,}02\%$.
+
+---
+
+### ❓ 15 Questões de Revisão Técnica — Dia 2 (Regressão Contínua)
+
+1. **Por que o modelo treinado diretamente na contagem bruta de visualizações desestabilizaria o gradiente?**
+   * *Resposta esperada:* Porque a distribuição segue uma lei de potência com outliers de centenas de milhões de visualizações. O gradiente da perda MSE é proporcional ao erro linear $(y - \hat{y})$, fazendo com que poucos vídeos virais gerassem gradientes gigantescos que destruiriam os pesos da rede.
+
+2. **Qual é o papel da transformação logarítmica $y_{\log} = \log_{10}(\text{views} + 1)$?**
+   * *Resposta esperada:* Estabilizar a variância residual (garantir homocedasticidade) e comprimir as ordens de magnitude em uma distribuição simétrica próxima da normal, permitindo que o otimizador trate pequenos e grandes canais de forma equilibrada.
+
+3. **Por que somamos $+1$ dentro do logaritmo ($\log_{10}(\text{views} + 1)$)?**
+   * *Resposta esperada:* Para garantir estabilidade matemática quando $\text{views} = 0$, uma vez que $\log(0)$ é indefinido ($-\infty$), além de garantir que $\log_{10}(0 + 1) = 0$.
+
+4. **Como garantimos ausência de vazamento de dados (*data leakage*) no `StandardScaler` da regressão?**
+   * *Resposta esperada:* Ajustando os parâmetros de média ($\mu$) e desvio padrão ($\sigma$) estritamente sobre os dados de treino (`scaler.fit_transform`), e apenas aplicando esses parâmetros congelados nos conjuntos de validação e teste (`scaler.transform`).
+
+5. **Por que o $R^2$ na escala linear de visualizações resultou em valores negativos (~ -0,008)?**
+   * *Resposta esperada:* Porque a métrica $R^2$ quadrática é hipersensível a outliers extremos. Erros em vídeos com mais de 200 milhões de views elevam a soma dos quadrados dos resíduos além da variância total, gerando $R^2 < 0$, mesmo que o modelo acerte a grande maioria dos vídeos comuns.
+
+6. **O que significa fisicamente obter um $\text{MAE}_{\log} = 0{,}8457$ em escala logarítmica?**
+   * *Resposta esperada:* Significa que a predição média do modelo erra por um fator de $10^{0{,}8457} \approx 7 \times$ a ordem de grandeza real do vídeo, o que é uma estimativa consistente em uma plataforma onde as visualizações variam por um fator de mais de $1.000.000 \times$.
+
+7. **Por que o Random Forest nos pixels brutos superou todas as redes neurais em $480 \times 360$ ($R^2_{\log} = 6{,}89\%$)?**
+   * *Resposta esperada:* Porque o ensemble de árvores com `max_features='sqrt'` particiona os pixels nítidos de alta resolução em limiares ortogonais livres de gradiente, identificando elementos de alto contraste e textos de *clickbait* sem sofrer com a maldição da dimensionalidade.
+
+8. **O que causou o travamento inicial do `RandomForestRegressor` em alta resolução no cluster?**
+   * *Resposta esperada:* Por padrão no scikit-learn, o `RandomForestRegressor` adota `max_features=1.0` (avalia todas as $518.400$ features em cada nó), ao contrário do classificador que usa `sqrt`. Isso aumentou a carga computacional em mais de $720 \times$, travando a CPU na ordenação contínua de matrizes.
+
+9. **Como a alteração para `max_features='sqrt'` resolveu o problema de complexidade do Random Forest?**
+   * *Resposta esperada:* Reduziu o espaço de busca de $518.400$ para $\sqrt{518.400} = 720$ variáveis aleatórias por nó, acelerando o treinamento em mais de 700 vezes e concluindo em menos de 30 segundos.
+
+10. **Por que o desempenho da MLP degradou de $R^2_{\log} = 4{,}92\%$ em $64 \times 64$ para $2{,}24\%$ em $480 \times 360$?**
+    * *Resposta esperada:* Devido à *Maldição da Dimensionalidade*. A primeira camada linear inflou para mais de 265 milhões de parâmetros para apenas 1.186 exemplos de treino, forçando a rede a memorizar ruídos e perder poder de generalização.
+
+11. **Por que a CNN 2D apresentou a maior evolução positiva ($\Delta R^2_{\log} = +3{,}29\%$) com o aumento da resolução?**
+    * *Resposta esperada:* Porque os kernels convolucionais combinados com `AdaptiveAvgPool2d` mantiveram o número de parâmetros constante (~358 mil) enquanto extraíram feições ricas e nítidas dos pixels em alta definição, permitindo capturar texturas e expressões faciais informativas.
+
+12. **Por que o Random Forest treinado nos embeddings do Autoencoder teve o pior $R^2_{\log}$ (-10,46%)?**
+    * *Resposta esperada:* O gargalo de compressão latente de $8.100:1$ ($518.400 \to 64$) reteve apenas a iluminação de fundo e cores médias para reconstrução geométrica, descartando sinais locais correlacionados à variação contínua de engajamento.
+
+13. **Qual é a diferença fundamental entre as saídas das redes de classificação e de regressão implementadas?**
+    * *Resposta esperada:* Na classificação, a camada final projeta para $2$ logits com perda Cross-Entropy; na regressão, a camada final projeta para $1$ único neurônio linear contínuo com perda MSE, sem função de ativação de corte.
+
+14. **O que o gráfico de distribuição de resíduos centrado em zero comprova?**
+    * *Resposta esperada:* Comprova que as predições não possuem viés sistemático de calibração; os erros estão uniformemente distribuídos entre superestimar e subestimar, validando a eficácia da normalização logarítmica.
+
+15. **Como as predições na escala logarítmica são convertidas para visualizações no mundo real?**
+    * *Resposta esperada:* Invertendo a padronização via desvio e média do treino ($\hat{y}_{\log} = \hat{z} \cdot \sigma + \mu$) e aplicando a função exponencial inversa com corte não-negativo: $\widehat{\text{views}} = \max(0, \; 10^{\hat{y}_{\log}} - 1)$.
