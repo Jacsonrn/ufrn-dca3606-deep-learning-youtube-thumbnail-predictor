@@ -142,8 +142,8 @@ if [ -f "src/train_regression.py" ]; then
 fi
 
 if [ -f "src/analyze_embeddings.py" ]; then
-    echo ">> [4/5] Executando Análise de Embeddings e Reconstrução Visual (Dia 3)..."
-    $PYTHON_BIN -u src/analyze_embeddings.py
+    echo ">> [4/5] Executando Análise de Embeddings e Reconstrução Visual (Dia 3 em Alta Resolução Nativa 480x360)..."
+    $PYTHON_BIN -u src/analyze_embeddings.py --res 480x360
 fi
 
 if [ -f "src/benchmark_computational_cost.py" ]; then
