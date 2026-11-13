@@ -1,8 +1,8 @@
-Modelo,Tarefa,Parâmetros Treináveis,Tamanho Memória (MB),Latência 100 Imagens (ms),Throughput (FPS)
-MLPClassifier (64x64),Classificação,6441538,24.57,87.24,1146.3
-CNNClassifier (64x64),Classificação,356226,1.36,1751.07,57.1
-ResNetClassifier (64x64),Classificação,481698,1.84,4157.26,24.1
-ConvAutoencoder (64x64),Não-Supervisionado,1387907,5.29,1109.13,90.2
-MLPRegressor (64x64),Regressão,6441473,24.57,63.57,1573.0
-CNNRegressor (64x64),Regressão,356097,1.36,725.72,137.8
-ResNetRegressor (64x64),Regressão,481569,1.84,3064.68,32.6
+Modelo,Tarefa,Parâmetros Treináveis,Tamanho Memória (MB),Latência CPU (ms),Throughput CPU (FPS),Latência A100 (ms),Throughput A100 (FPS),Speedup Hardware
+MLPClassifier (64x64),Classificação,6441538,24.57,105.05,951.9,N/A (CPU),N/A (CPU),1.0x
+CNNClassifier (64x64),Classificação,356226,1.36,1553.72,64.4,N/A (CPU),N/A (CPU),1.0x
+ResNetClassifier (64x64),Classificação,481698,1.84,4237.99,23.6,N/A (CPU),N/A (CPU),1.0x
+ConvAutoencoder (64x64),Não-Supervisionado,1387907,5.29,1100.17,90.9,N/A (CPU),N/A (CPU),1.0x
+MLPRegressor (64x64),Regressão,6441473,24.57,55.28,1809.0,N/A (CPU),N/A (CPU),1.0x
+CNNRegressor (64x64),Regressão,356097,1.36,1249.49,80.0,N/A (CPU),N/A (CPU),1.0x
+ResNetRegressor (64x64),Regressão,481569,1.84,4026.93,24.8,N/A (CPU),N/A (CPU),1.0x

@@ -26,18 +26,28 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
 
-def measure_inference_latency(model: torch.nn.Module, sample_batch: torch.Tensor, runs: int = 30) -> float:
-    """Mede a latência média (ms) para processar um lote de 100 imagens com warm-up."""
+def measure_latency_device(model: torch.nn.Module, sample_batch: torch.Tensor, device: torch.device, runs: int = 30) -> float:
+    """Mede a latência média (ms) para processar 100 imagens com warm-up e sincronização explícita."""
+    model = model.to(device)
+    batch = sample_batch.to(device)
     model.eval()
+    is_cuda = device.type == "cuda"
+
     with torch.no_grad():
-        # Warm-up de 5 iterações para estabilizar pipeline/caches
+        # Warm-up de 5 iterações para estabilizar kernels e caches
         for _ in range(5):
-            _ = model(sample_batch)
+            _ = model(batch)
+        if is_cuda:
+            torch.cuda.synchronize()
 
         latencies = []
         for _ in range(runs):
+            if is_cuda:
+                torch.cuda.synchronize()
             t0 = time.perf_counter()
-            _ = model(sample_batch)
+            _ = model(batch)
+            if is_cuda:
+                torch.cuda.synchronize()
             latencies.append((time.perf_counter() - t0) * 1000.0)
 
     return float(np.mean(latencies))
@@ -47,7 +57,10 @@ def run_computational_benchmark():
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("Iniciando Benchmark de Custo Computacional (Slide 14)...")
+    has_cuda = torch.cuda.is_available()
+    device_name = torch.cuda.get_device_name(0) if has_cuda else "CPU Local"
+    print(f"Iniciando Benchmark de Custo Computacional (Slide 14)...")
+    print(f" -> Hardware Detectado: {device_name} (CUDA Ativo: {has_cuda})")
 
     # Lote sintético padronizado de 100 thumbnails (64x64x3)
     batch_64 = torch.randn(100, 3, 64, 64)
@@ -66,16 +79,31 @@ def run_computational_benchmark():
     for name, model, batch, task in models_to_test:
         params_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         model_size_mb = sum(p.numel() * p.element_size() for p in model.parameters()) / (1024 * 1024)
-        latency_ms = measure_inference_latency(model, batch, runs=30)
-        fps = (100.0 / (latency_ms / 1000.0))
+
+        # 1. Medição em CPU
+        latency_cpu = measure_latency_device(model, batch, torch.device("cpu"), runs=30)
+        fps_cpu = (100.0 / (latency_cpu / 1000.0))
+
+        # 2. Medição em GPU (quando disponível)
+        if has_cuda:
+            latency_gpu = measure_latency_device(model, batch, torch.device("cuda"), runs=30)
+            fps_gpu = (100.0 / (latency_gpu / 1000.0))
+            speedup = latency_cpu / max(latency_gpu, 1e-4)
+        else:
+            latency_gpu = latency_cpu
+            fps_gpu = fps_cpu
+            speedup = 1.0
 
         results.append({
             "Modelo": name,
             "Tarefa": task,
             "Parâmetros Treináveis": params_trainable,
             "Tamanho Memória (MB)": round(model_size_mb, 2),
-            "Latência 100 Imagens (ms)": round(latency_ms, 2),
-            "Throughput (FPS)": round(fps, 1)
+            "Latência CPU (ms)": round(latency_cpu, 2),
+            "Throughput CPU (FPS)": round(fps_cpu, 1),
+            "Latência A100 (ms)": round(latency_gpu, 2) if has_cuda else "N/A (CPU)",
+            "Throughput A100 (FPS)": round(fps_gpu, 1) if has_cuda else "N/A (CPU)",
+            "Speedup Hardware": f"{speedup:.1f}x" if has_cuda else "1.0x"
         })
 
     df = pd.DataFrame(results)
@@ -101,10 +129,11 @@ def run_computational_benchmark():
     ax2 = ax1.twinx()
     color2 = "#d62728"
     ax2.set_ylabel("Latência para 100 Imagens (ms)", color=color2, fontweight="bold")
-    bars2 = ax2.bar(indices + width/2, df["Latência 100 Imagens (ms)"], width, label="Latência (ms)", color=color2, alpha=0.85)
+    bars2 = ax2.bar(indices + width/2, df["Latência CPU (ms)"], width, label="Latência CPU (ms)", color=color2, alpha=0.85)
     ax2.tick_params(axis="y", labelcolor=color2)
 
-    plt.title("Comparativo de Custo Computacional: Parâmetros vs. Latência de Inferência\n(Benchmark em CPU para Lote de 100 Imagens)", fontweight="bold", fontsize=12)
+    title_hardware = f"Hardware: {device_name}" if has_cuda else "Ambiente: CPU Local (Baseline)"
+    plt.title(f"Comparativo de Custo Computacional: Parâmetros vs. Latência de Inferência\n({title_hardware} — Lote de 100 Imagens)", fontweight="bold", fontsize=12)
     plt.tight_layout()
 
     fig_path = FIGURES_DIR / "computational_cost_vs_accuracy.png"

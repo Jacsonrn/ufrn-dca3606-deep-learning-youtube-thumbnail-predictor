@@ -28,7 +28,7 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
-DEVICE = torch.device("cpu")  # Análise determinística e compatível localmente
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def run_embedding_analysis():

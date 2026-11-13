@@ -137,8 +137,18 @@ echo ">> [2/3] Executando Pipeline de Classificação em Alta Resolução Nativa
 $PYTHON_BIN -u src/train_classification.py
 
 if [ -f "src/train_regression.py" ]; then
-    echo ">> [3/3] Executando Pipeline de Regressão em Alta Resolução Nativa (480x360)..."
+    echo ">> [3/5] Executando Pipeline de Regressão em Alta Resolução Nativa (480x360)..."
     $PYTHON_BIN -u src/train_regression.py
 fi
 
-echo ">> [SUCESSO] Pipeline concluído com sucesso no NPAD!"
+if [ -f "src/analyze_embeddings.py" ]; then
+    echo ">> [4/5] Executando Análise de Embeddings e Reconstrução Visual (Dia 3)..."
+    $PYTHON_BIN -u src/analyze_embeddings.py
+fi
+
+if [ -f "src/benchmark_computational_cost.py" ]; then
+    echo ">> [5/5] Executando Benchmark Formal de Custo Computacional na GPU A100 (Dia 3)..."
+    $PYTHON_BIN -u src/benchmark_computational_cost.py
+fi
+
+echo ">> [SUCESSO] Pipeline completo dos 3 Dias concluído com sucesso no cluster!"
