@@ -289,6 +289,20 @@ O benchmark formal em CPU revelou que:
 > [!NOTE]
 > **Explicação Teórica:** Em arquiteturas de CPU modernas (x86 com instruções AVX-512), a MLP executa uma multiplicação densa contígua de matrizes (GEMM - *General Matrix Multiply*), atingindo máxima eficiência de pipeline de registradores. Já as redes convolucionais e residuais demandam expansão em memória de tensores via `im2col` e múltiplas operações de pooling e ramificação de grafo computacional, resultando em maior latência temporal apesar de utilizarem $18\times$ menos memória estática.
 
+### 3.3 Aceleração Massiva em GPU A100 e Medição Síncrona CUDA
+A execução assíncrona por padrão do PyTorch submete kernels para a fila da GPU sem aguardar a conclusão. Para registrar a latência física real em hardware de datacenter, implementamos rotinas de warm-up e sincronização estrita de streams via `torch.cuda.synchronize()`:
+
+| Modelo | Latência CPU (ms) | Latência A100 (ms) | Throughput A100 (FPS) | Speedup Hardware |
+| :--- | :---: | :---: | :---: | :---: |
+| **MLP Classifier** | $64{,}63\text{ ms}$ | **$0{,}39\text{ ms}$** | **$255.756\text{ FPS}$** | **$165{,}3\times$** ⭐ |
+| **CNN Classifier** | $44{,}81\text{ ms}$ | **$0{,}88\text{ ms}$** | **$113.363\text{ FPS}$** | **$50{,}8\times$** |
+| **ResNet Classifier** | $107{,}69\text{ ms}$ | **$2{,}40\text{ ms}$** | **$41.739\text{ FPS}$** | **$44{,}9\times$** |
+| **ConvAutoencoder** | $20{,}17\text{ ms}$ | **$0{,}77\text{ ms}$** | **$130.104\text{ FPS}$** | **$26{,}2\times$** |
+| **CNN Regressor** | $41{,}71\text{ ms}$ | **$0{,}88\text{ ms}$** | **$114.189\text{ FPS}$** | **$47{,}6\times$** |
+| **ResNet Regressor** | $115{,}07\text{ ms}$ | **$2{,}40\text{ ms}$** | **$41.686\text{ FPS}$** | **$48{,}0\times$** |
+
+A largura de banda da memória HBM2e da A100 ($2.039\text{ GB/s}$) e os Tensor Cores de 3ª geração eliminaram completamente os gargalos de barramento, permitindo processar de $41$ mil a mais de $255$ mil thumbnails por segundo em inferência.
+
 ---
 
 ## 4. Banco de Arguição Oral — Dia 3: Embeddings e Custo Computacional (Questões 31 a 40)
@@ -296,8 +310,8 @@ O benchmark formal em CPU revelou que:
 31. **O que é o gargalo latente $Z$ e qual é a função da camada Sigmoid no final do Decoder?**
     * *Resposta esperada:* O gargalo latente $Z \in \mathbb{R}^{64}$ é a menor camada do autoencoder, cuja dimensão reduzida força a rede a descartar ruídos e reter apenas as características determinantes para a reconstrução. A ativação Sigmoid no final do decoder é mandatória porque os tensores de entrada foram normalizados no intervalo $[0, 1]$, garantindo que as intensidades dos canais RGB reconstruídos estejam limitadas a esse mesmo espaço físico contínuo.
 
-32. **Por que o modelo clássico Random Forest treinado sobre os embeddings $Z$ foi de $5\times$ a $10\times$ mais rápido do que treinado sobre os pixels $X$?**
-    * *Resposta esperada:* Devido à complexidade computacional da divisão de nós em árvores de decisão. Para $N$ amostras e dimensão $D$, avaliar os pontos de corte candidatos custa $\mathcal{O}(N \cdot D \log N)$. Ao reduzir a dimensão de $d = 12.288$ para $k = 64$ ($192\times$ menor), o número de atributos avaliados em cada nó decai drasticamente, reduzindo o tempo de treinamento de $8{,}14\text{ s}$ para $1{,}50\text{ s}$ na classificação e de $9{,}37\text{ s}$ para $0{,}92\text{ s}$ na regressão.
+32. **Por que o modelo clássico Random Forest treinado sobre os embeddings $Z$ foi de $5\times$ a $14\times$ mais rápido do que treinado sobre os pixels $X$?**
+    * *Resposta esperada:* Devido à complexidade computacional da divisão de nós em árvores de decisão. Para $N$ amostras e dimensão $D$, avaliar os pontos de corte candidatos custa $\mathcal{O}(N \cdot D \log N)$. Em baixa resolução ($64\times 64$), reduzir a dimensão de $d = 12.288$ para $k = 64$ ($192\times$ menor) acelerou o treino de $8{,}14\text{ s}$ para $1{,}50\text{ s}$ ($5{,}4\times$). Na resolução nativa máxima ($480 \times 360$), a redução de $d = 518.400$ para $k = 64$ ($8.100\times$ menor) fez o tempo de treino do classificador despencar de $2{,}28\text{ s}$ para **$0{,}16\text{ s}$ ($14{,}2\times$ mais rápido)** e na regressão de $2{,}70\text{ s}$ para **$0{,}13\text{ s}$ ($20{,}8\times$ mais rápido)**.
 
 33. **Por que o Autoencoder gerou uma acurácia maior em classificação com Random Forest ($59{,}22\%$) do que o Random Forest com pixels brutos ($56{,}08\%$) em 64x64?**
     * *Resposta esperada:* Porque a compressão latente atuou como um **filtro regularizador de remoção de ruído (*denoising/manifold filtering*)**. Os pixels brutos de uma imagem redimensionada para $64 \times 64$ contêm ruídos de interpolação e redundância espacial que podem iludir as árvores. As convoluções do encoder sintetizaram feições visuais agregadas, facilitando a partição ortogonal do ensemble.

@@ -128,40 +128,40 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 
 ## 🔬 Dia 3: Embeddings, Reconstrução e Custo Computacional
 
-### 1. Efeito da Representação Aprendida (Slide 19 do Roteiro Oficial)
+### 1. Efeito da Representação Aprendida em Alta Resolução Nativa (Slide 19 do Roteiro Oficial)
 
 | Tarefa | Representação | Dimensão | Taxa de Compressão | Métrica Principal | Tempo de Treino (s) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Classificação** | Atributos Originais ($X$) | $d = 12.288$ | $1:1$ | Acurácia: $56{,}08\%$ | $8{,}14\text{ s}$ |
-| **Classificação** | Embedding do AE ($Z$) | $k = 64$ | **$192:1$ ($99{,}48\%$ menor)** | **Acurácia: $59{,}22\%$** ⭐ | **$1{,}50\text{ s}$ ($5{,}4\times$ mais rápido)** |
-| **Regressão** | Atributos Originais ($X$) | $d = 12.288$ | $1:1$ | $R^2_{\log}: 5{,}61\%$ | $9{,}37\text{ s}$ |
-| **Regressão** | Embedding do AE ($Z$) | $k = 64$ | **$192:1$ ($99{,}48\%$ menor)** | $R^2_{\log}: 3{,}84\%$ | **$0{,}92\text{ s}$ ($10{,}2\times$ mais rápido)** |
+| **Classificação** | Pixels Originais ($480 \times 360$) | $d = 518.400$ | $1:1$ | Acurácia: $61{,}57\%$ | $2{,}28\text{ s}$ |
+| **Classificação** | **Embedding do AE ($Z$)** | $k = 64$ | **$8.100:1$ ($99{,}99\%$ menor)** | **Acurácia: $60{,}78\%$** | **$0{,}16\text{ s}$ ($14{,}2\times$ mais rápido)** ⭐ |
+| **Regressão** | Pixels Originais ($480 \times 360$) | $d = 518.400$ | $1:1$ | $R^2_{\log}: 6{,}89\%$ | $2{,}70\text{ s}$ |
+| **Regressão** | **Embedding do AE ($Z$)** | $k = 64$ | **$8.100:1$ ($99{,}99\%$ menor)** | $R^2_{\log}: 0{,}51\%$ | **$0{,}13\text{ s}$ ($20{,}8\times$ mais rápido)** |
 
 <details>
 <summary><b>🔍 Clique para expandir as Provas Visuais do Espaço Latente e Reconstrução</b></summary>
 
 <p align="center">
-  <b>Reconstrução Visual de Thumbnails pelo Autoencoder Convolucional (Original vs Reconstruída)</b><br>
-  <img src="reports/figures/autoencoder_reconstruction_samples.png" width="95%" alt="Amostras de Reconstrução do Autoencoder" />
+  <b>Reconstrução Visual de Thumbnails pelo Autoencoder Convolucional em Alta Resolução Nativa (480x360)</b><br>
+  <img src="reports/figures/autoencoder_reconstruction_samples_480x360.png" width="95%" alt="Amostras de Reconstrução do Autoencoder 480x360" />
 </p>
 
 <p align="center">
   <b>Mapeamento do Espaço Latente Z: PCA (Linear) vs. t-SNE (Não-Linear com Gradiente de Views)</b><br>
-  <img src="reports/figures/latent_space_tsne_pca.png" width="90%" alt="Projeções PCA e t-SNE" />
+  <img src="reports/figures/latent_space_tsne_pca_480x360.png" width="90%" alt="Projeções PCA e t-SNE 480x360" />
 </p>
 </details>
 
-### 2. Benchmark de Custo Computacional e Latência de Inferência (Slide 14 do Roteiro Oficial)
+### 2. Benchmark de Custo Computacional e Aceleração na GPU A100 (Slide 14 do Roteiro Oficial)
 
-| Modelo | Tarefa | Parâmetros Treináveis | Memória dos Pesos | Latência (Lote de 100 imgs) | Throughput (FPS) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **MLP Classifier** | Classificação | $6.441.538$ | $24{,}57\text{ MB}$ | $87{,}24\text{ ms}$ | $1.146{,}3\text{ FPS}$ |
-| **CNN Classifier** | Classificação | **$356.226$ ($18\times$ menor)** | **$1{,}36\text{ MB}$** | $1.751{,}07\text{ ms}$ | $57{,}1\text{ FPS}$ |
-| **ResNet Classifier** | Classificação | $481.698$ | $1{,}84\text{ MB}$ | $4.157{,}26\text{ ms}$ | $24{,}1\text{ FPS}$ |
-| **ConvAutoencoder** | Não-Superv. | $1.387.907$ | $5{,}29\text{ MB}$ | $1.109{,}13\text{ ms}$ | $90{,}2\text{ FPS}$ |
-| **MLP Regressor** | Regressão | $6.441.473$ | $24{,}57\text{ MB}$ | $63{,}57\text{ ms}$ | $1.573{,}0\text{ FPS}$ |
-| **CNN Regressor** | Regressão | **$356.097$ ($18\times$ menor)** | **$1{,}36\text{ MB}$** | $725{,}72\text{ ms}$ | $137{,}8\text{ FPS}$ |
-| **ResNet Regressor** | Regressão | $481.569$ | $1{,}84\text{ MB}$ | $3.064{,}68\text{ ms}$ | $32{,}6\text{ FPS}$ |
+| Modelo | Tarefa | Parâmetros | Memória | Latência CPU | Latência A100 | Throughput A100 | Speedup Hardware |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **MLP Classifier** | Classificação | $6.441.538$ | $24{,}57\text{ MB}$ | $64{,}63\text{ ms}$ | **$0{,}39\text{ ms}$** | **$255.756\text{ FPS}$** | **$165{,}3\times$** ⭐ |
+| **CNN Classifier** | Classificação | **$356.226$ ($18\times$ menor)** | **$1{,}36\text{ MB}$** | $44{,}81\text{ ms}$ | **$0{,}88\text{ ms}$** | **$113.363\text{ FPS}$** | **$50{,}8\times$** |
+| **ResNet Classifier** | Classificação | $481.698$ | $1{,}84\text{ MB}$ | $107{,}69\text{ ms}$ | **$2{,}40\text{ ms}$** | **$41.739\text{ FPS}$** | **$44{,}9\times$** |
+| **ConvAutoencoder** | Não-Superv. | $1.387.907$ | $5{,}29\text{ MB}$ | $20{,}17\text{ ms}$ | **$0{,}77\text{ ms}$** | **$130.104\text{ FPS}$** | **$26{,}2\times$** |
+| **MLP Regressor** | Regressão | $6.441.473$ | $24{,}57\text{ MB}$ | $2{,}25\text{ ms}$ | **$0{,}41\text{ ms}$** | **$246.336\text{ FPS}$** | **$5{,}5\times$** |
+| **CNN Regressor** | Regressão | **$356.097$ ($18\times$ menor)** | **$1{,}36\text{ MB}$** | $41{,}71\text{ ms}$ | **$0{,}88\text{ ms}$** | **$114.189\text{ FPS}$** | **$47{,}6\times$** |
+| **ResNet Regressor** | Regressão | $481.569$ | $1{,}84\text{ MB}$ | $115{,}07\text{ ms}$ | **$2{,}40\text{ ms}$** | **$41.686\text{ FPS}$** | **$48{,}0\times$** |
 
 <p align="center">
   <b>Trade-off Custo vs. Latência: Parâmetros Treináveis vs. Tempo de Inferência</b><br>
@@ -179,26 +179,21 @@ Avaliação no conjunto de teste cego comparando inferência na escala $\log_{10
 │   └── processed/                  # Tensores particionados e compactados (.npz) (.gitkeep)
 ├── models/                         # Pesos treinados das redes (.gitkeep; binários .pt ignorados)
 ├── reports/                        # Métricas formais e figuras consolidadas
-│   ├── figures/                    # 17 gráficos em 300 DPI (EDA, Classificação, Regressão, Embeddings e Custo)
-│   ├── classification_metrics.csv  # Tabela exportada de classificação (64x64)
-│   ├── classification_metrics_64x64.csv
+│   ├── figures/                    # 21 gráficos em 300 DPI (EDA, Classificação, Regressão, Embeddings e Custo)
+│   ├── classification_metrics.csv  # Tabela exportada de classificação
 │   ├── classification_metrics_480x360.csv
-│   ├── comparison_classification_64x64_vs_480x360.csv
-│   ├── regression_metrics.csv      # Tabela exportada de regressão (64x64)
-│   ├── regression_metrics_64x64.csv
+│   ├── regression_metrics.csv      # Tabela exportada de regressão
 │   ├── regression_metrics_480x360.csv
 │   ├── comparison_regression_64x64_vs_480x360.csv
 │   ├── embedding_representation_effect.csv # Tabela oficial do Slide 19
+│   ├── embedding_representation_effect_480x360.csv
 │   └── computational_cost_benchmark.csv   # Tabela oficial do Slide 14
 ├── reports_gpu_fase_1/             # Backup bruto da Classificação e EDA na GPU A100
-│   ├── figures/                    # Figuras geradas exclusivamente na GPU A100
-│   ├── classification_metrics.csv
-│   └── classification_metrics_480x360.csv
 ├── reports_gpu_fase_2/             # Backup bruto da Regressão Contínua na GPU A100
-│   ├── figures/                    # Dispersões e resíduos gerados na GPU A100
-│   ├── regression_metrics.csv
-│   ├── regression_metrics_64x64.csv
-│   └── regression_metrics_480x360.csv
+├── reports_gpu_fase_3/             # Backup bruto exclusivo do Dia 3 (Embeddings e Custo na A100)
+│   ├── figures/                    # Autoencoder, t-SNE/PCA e Benchmark de Custo
+│   ├── computational_cost_benchmark.csv
+│   └── embedding_representation_effect*.csv
 ├── src/                            # Pipeline de código-fonte modular
 │   ├── analyze_embeddings.py       # Extração de embeddings Z, PCA/t-SNE 2D e reconstrução visual
 │   ├── architectures.py            # Definições PyTorch (MLP, CNN, ResNet, CAE - Classif/Regr)
