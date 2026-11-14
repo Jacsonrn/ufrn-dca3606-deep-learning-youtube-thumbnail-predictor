@@ -6,7 +6,6 @@ ProjetoUnidade2.pdf
 *.pdf
 *Plano*
 Apresentacao_Slides.md
-*.pptx
 .~lock.*
 src/generate_presentation_pptx.py
 
