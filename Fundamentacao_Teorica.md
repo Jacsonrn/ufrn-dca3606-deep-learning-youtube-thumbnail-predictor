@@ -76,10 +76,21 @@ $$X_i \in \mathbb{R}^{C \times H \times W} \quad \text{onde } C=3 \text{ (RGB)}$
   - **Mediana Central:** Apenas **$610.055$ visualizações**.
   - **Desvio Padrão:** Explode para **$253.185.882$ visualizações** (uma dispersão mais de 400 vezes superior ao valor central).
   - **Consequência Estatística:** Em distribuições com assimetria positiva tão severa, a média aritmética simples e o desvio padrão tornam-se métricas enganosas e instáveis. Qualquer modelo orientado à média linear é puxado pelos outliers bilionários, errando todos os vídeos comuns da plataforma.
-* **A Binarização Anti-Vazamento (*No Leakage*):** A variável contínua de visualizações foi binarizada em **Alto Engajamento** ($y=1$) vs. **Baixo Engajamento** ($y=0$) utilizando a **Mediana** como limiar de corte ($\tau$):
-  $$y_{\text{class}} = \begin{cases} 1, & \text{se } \text{views} \ge \tau \\ 0, & \text{se } \text{views} < \tau \end{cases}$$
-  - **A Regra de Ouro:** O limiar $\tau = 610.055$ visualizações foi computado **estritamente sobre o conjunto de Treino (70%)**.
-  - **Justificativa Teórica:** O cálculo da mediana sobre o conjunto total antes do particionamento violaria a independência das distribuições amostrais, vazando parâmetros dos dados de teste para a rotulagem de treino.
+* **O Limiar de Corte ($\tau$) como Fronteira de Decisão:** O limiar de corte é a fronteira de decisão escalar utilizada para mapear o domínio contínuo de visualizações em classes binárias discretas:
+  $$y_i = \begin{cases} 1 \text{ (Alto Engajamento / Viral)}, & \text{se } \text{views}_i \ge \tau \\ 0 \text{ (Baixo Engajamento)}, & \text{se } \text{views}_i < \tau \end{cases}$$
+  - **Valor Numérico Adotado:** $\tau = 610.055\text{ visualizações}$, computado **exclusivamente sobre o conjunto de Treino (70%)**.
+
+* **A Binarização e a Prova Empírica do Teste Cego:** Ao aplicar o limiar $\tau$ congelado sobre as partições, a distribuição de classes resultou em:
+  - **Treino (70%, $N=1.186$):** $593$ Classe 0 ($50{,}0\%$) e $593$ Classe 1 ($50{,}0\%$) — equilíbrio perfeito imposto pela própria definição matemática da mediana.
+  - **Validação (15%, $N=254$):** $124$ Classe 0 ($48{,}8\%$) e $130$ Classe 1 ($51{,}2\%$).
+  - **Teste Cego (15%, $N=255$):** $117$ Classe 0 ($45{,}9\%$) e $138$ Classe 1 ($54{,}1\%$).
+  > [!IMPORTANT]
+  > **Defesa Científica Anti-Leakage:** A pequena assimetria observada na validação e no teste é a prova empírica perante a banca de que o teste foi rigorosamente cego. Se o teste apresentasse exatamente $50\%/50\%$, significaria que a mediana teria sido recalculada sobre os dados de teste, configurando vazamento estatístico (*data leakage*).
+
+* **Padronização Z-Score (`StandardScaler`) e Isolamento de Treino:** Para o pipeline de regressão, os alvos contínuos em escala logarítmica ($y_{\log} = \log_{10}(\text{views} + 1)$) foram padronizados via Z-score:
+  $$z = \frac{y_{\log} - \mu}{\sigma}$$
+  - **A Regra Anti-Vazamento:** O `scaler.fit_transform()` executou exclusivamente no treino, aprendendo $\mu_{\text{treino}} = 5{,}78$ e $\sigma_{\text{treino}} = 1{,}08$. Os conjuntos de validação e teste receberam apenas `scaler.transform()` com esses parâmetros congelados.
+  - **Reversão Estrita na Inferência:** Na avaliação de teste, as predições $\hat{z}$ foram desnormalizadas ($\hat{y}_{\log} = \hat{z} \cdot 1{,}08 + 5{,}78$) e convertidas para visualizações brutas ($\widehat{\text{views}} = \max(0, 10^{\hat{y}_{\log}} - 1)$), permitindo calcular o MAE real sem qualquer contaminação estatística.
 
 #### 3. A Falha Teórica da MLP e a Maldição da Dimensionalidade
 A MLP exige o achatamento (*flatten*) da matriz bidimensional em um vetor $x_{\text{flat}} \in \mathbb{R}^D$:
@@ -117,7 +128,7 @@ permite ao ensemble de 100 árvores encontrar limiares de decisão independentes
 
 ---
 
-### ❓ 21 Questões de Revisão Técnica — Dia 1: Fundamentos e Classificação (Questões 1 a 21)
+### ❓ 23 Questões de Revisão Técnica — Dia 1: Fundamentos e Classificação (Questões 1 a 23)
 
 1. **O que é uma Função de Perda (*Loss Function*) e como ela orienta a retropropagação (*backpropagation*) no treinamento?**
    * *Resposta esperada:* É a equação matemática que quantifica a discrepância entre a predição da rede ($\hat{y}$) e o alvo real ($y$). No *forward pass*, calcula o erro escalar; no *backward pass*, suas derivadas parciais ($\frac{\partial \mathcal{L}}{\partial w}$) indicam a direção e magnitude de ajuste dos pesos para minimizar o erro via descida de gradiente estocástica.
@@ -137,49 +148,55 @@ permite ao ensemble de 100 árvores encontrar limiares de decisão independentes
 6. **O que é uma distribuição com cauda pesada (*Heavy-Tailed Power-Law*) e qual foi o impacto observado no dataset de thumbnails?**
    * *Resposta esperada:* É uma distribuição onde a probabilidade de ocorrência de valores extremos decai segundo uma lei de potência assintótica ($P(X > x) \propto x^{-\alpha}$) em vez de decaimento exponencial rápido. No dataset de 1.695 thumbnails, isso gerou uma discrepância massiva onde a **mediana central é de apenas $\sim 610$ mil views**, enquanto o **desvio padrão explode para $253$ milhões de views**. Essa assimetria inviabiliza a média aritmética simples e justifica o uso da mediana no treino para a classificação binária e a transformação logarítmica para a regressão.
 
-7. **Por que o limiar de classificação (mediana de visualizações) foi calculado exclusivamente no conjunto de treino?**
-   * *Resposta esperada:* Para evitar o vazamento de dados (*data leakage*). Se a mediana fosse calculada sobre todo o conjunto, informações estatísticas do teste contaminariam o treino, invalidando o teste cego.
+7. **O que é o limiar de corte ($\tau$) na formulação de Machine Learning e como ele operou na prática no projeto?**
+   * *Resposta esperada:* É a fronteira de decisão escalar utilizada para particionar um domínio contínuo em categorias discretas. No projeto, $\tau$ foi definido como a mediana de visualizações do treino ($\tau = 610.055\text{ views}$). A regra de decisão associou classe $1$ (viral) se $\text{views}_i \ge \tau$ e classe $0$ caso contrário. O valor foi computado estritamente no treino e aplicado congelado na validação e teste.
 
-8. **Qual é a principal deficiência teórica de utilizar uma MLP para classificação de imagens?**
-   * *Resposta esperada:* A perda da coerência espacial 2D e da invariância à translação ao achatar o tensor em um vetor 1D, além da explosão exponencial de parâmetros na primeira camada linear.
+8. **O que é binarizar os dados e o que a distribuição de classes nos conjuntos de validação e teste comprova cientificamente?**
+   * *Resposta esperada:* É o mapeamento de variáveis contínuas em representações booleanas $\{0, 1\}$. No treino ($N=1.186$), a binarização gerou equilíbrio exato de $50\%/50\%$ ($593$ Classe 0 e $593$ Classe 1). Na validação ($N=254$), resultou em $124$ Classe 0 e $130$ Classe 1; no teste cego ($N=255$), em $117$ Classe 0 e $138$ Classe 1. Essa leve assimetria no teste atesta rigor científico, provando que o limiar não foi recalculado sobre o teste e garantindo a honestidade do teste cego.
 
-9. **Como a operação de convolução 2D supera as limitações da MLP em visão computacional?**
-   * *Resposta esperada:* Através dos *campos receptivos locais* ($3 \times 3$) e do *compartilhamento de pesos* (mesmos filtros em toda a imagem), preservando as relações topológicas com menos parâmetros.
+9. **Por que a padronização Z-Score (`StandardScaler`) foi ajustada estritamente no treino e como funciona na prática a inversão de escala?**
+   * *Resposta esperada:* Para impedir vazamento estatístico (*data leakage*). Se a média $\mu$ e o desvio $\sigma$ fossem computados sobre o dataset completo, o modelo receberia informações prévias sobre a variância e outliers do teste. No código, o método `fit_transform` no treino aprendeu $\mu = 5{,}78$ e $\sigma = 1{,}08$, enquanto a validação e o teste receberam apenas `transform` congelado. Na inferência, a predição normalizada $\hat{z}$ é invertida via $\hat{y}_{\log} = \hat{z} \cdot 1{,}08 + 5{,}78$ e reconvertida com $10^{\hat{y}_{\log}} - 1$ para calcular o MAE real em visualizações brutas.
 
-10. **O que é o problema do desvanecimento do gradiente e como os blocos residuais da ResNet o mitigam?**
+10. **Qual é a principal deficiência teórica de utilizar uma MLP para classificação de imagens?**
+    * *Resposta esperada:* A perda da coerência espacial 2D e da invariância à translação ao achatar o tensor em um vetor 1D, além da explosão exponencial de parâmetros na primeira camada linear.
+
+11. **Como a operação de convolução 2D supera as limitações da MLP em visão computacional?**
+    * *Resposta esperada:* Através dos *campos receptivos locais* ($3 \times 3$) e do *compartilhamento de pesos* (mesmos filtros em toda a imagem), preservando as relações topológicas com menos parâmetros.
+
+12. **O que é o problema do desvanecimento do gradiente e como os blocos residuais da ResNet o mitigam?**
     * *Resposta esperada:* Multiplicações sucessivas de derivadas menores que 1 atenuam o gradiente em redes profundas. A conexão de atalho $\mathcal{H}(x) = \mathcal{F}(x) + x$ garante uma derivada $\frac{\partial \mathcal{H}}{\partial x} = \frac{\partial \mathcal{F}}{\partial x} + I$, mantendo um fluxo de gradiente unitário mínimo constante.
 
-11. **Por que a ResNet obteve o maior Recall de engajamento (67,39% em 64x64 e 93,48% em 480x360)?**
+13. **Por que a ResNet obteve o maior Recall de engajamento (67,39% em 64x64 e 93,48% em 480x360)?**
     * *Resposta esperada:* A facilidade de fluxo de gradiente permitiu à rede aprender padrões visuais sutis e correlacionados a thumbnails virais sem saturação, tornando-a um detector altamente sensível.
 
-12. **Qual é a diferença fundamental no treinamento do Autoencoder Convolucional em relação aos demais modelos?**
+14. **Qual é a diferença fundamental no treinamento do Autoencoder Convolucional em relação aos demais modelos?**
     * *Resposta esperada:* O Autoencoder foi treinado de forma **não-supervisionada** via perda MSE de reconstrução da própria imagem, sem qualquer acesso aos dados de visualizações ou rótulos de engajamento.
 
-13. **Por que o Random Forest treinado com embeddings do Autoencoder teve desempenho inferior ao treinado em pixels brutos?**
+15. **Por que o Random Forest treinado com embeddings do Autoencoder teve desempenho inferior ao treinado em pixels brutos?**
     * *Resposta esperada:* Porque a função de perda de reconstrução prioriza a variância visual global da imagem (iluminação e fundos), descartando detalhes locais e tipográficos que definem a decisão humana de clicar.
 
-14. **Por que o Random Forest nos pixels brutos superou as redes neurais em acurácia geral?**
+16. **Por que o Random Forest nos pixels brutos superou as redes neurais em acurácia geral?**
     * *Resposta esperada:* Modelos ensemble particionam o espaço por cortes ortogonais não-paramétricos sem depender de gradientes estocásticos, sendo imunes a platôs de otimização em bases de escala moderada (~1.200 amostras).
 
-15. **Qual foi o papel do Early Stopping e da divisão com conjunto de validação?**
+17. **Qual foi o papel do Early Stopping e da divisão com conjunto de validação?**
     * *Resposta esperada:* Monitorar a perda de generalização em dados não treinados a cada época, interrompendo o treino após 5 épocas consecutivas sem melhora e restaurando os melhores pesos salvos.
 
-16. **Por que a métrica Macro-F1 foi priorizada em relação à Acurácia simples?**
+18. **Por que a métrica Macro-F1 foi priorizada em relação à Acurácia simples?**
     * *Resposta esperada:* O Macro-F1 calcula a média harmônica de precisão e sensibilidade para cada classe individualmente, impedindo que um modelo enviesado para a classe majoritária receba uma nota artificialmente alta.
 
-17. **O que aconteceu com a MLP quando a resolução aumentou de $64 \times 64$ para $480 \times 360$?**
+19. **O que aconteceu com a MLP quando a resolução aumentou de $64 \times 64$ para $480 \times 360$?**
     * *Resposta esperada:* Ocorreu um colapso pela *Maldição da Dimensionalidade*. A entrada saltou para $518.400$ valores e a primeira camada atingiu $265$ milhões de pesos. Para apenas $1.186$ amostras de treino, a rede entrou em sobreajuste imediato.
 
-18. **Por que o número de parâmetros da CNN não explodiu com o aumento da resolução como na MLP?**
+20. **Por que o número de parâmetros da CNN não explodiu com o aumento da resolução como na MLP?**
     * *Resposta esperada:* Porque os kernels convolucionais compartilham pesos independentemente da dimensão da imagem, e a camada `AdaptiveAvgPool2d((4, 4))` converte qualquer resolução para uma dimensão fixa antes das camadas densas, mantendo fixos os ~358 mil pesos.
 
-19. **Por que o aumento de resolução elevou a performance do Random Forest nos pixels brutos para 61,57%?**
+21. **Por que o aumento de resolução elevou a performance do Random Forest nos pixels brutos para 61,57%?**
     * *Resposta esperada:* Em $480 \times 360$, a nitidez das bordas do texto de *clickbait* e o contraste das faces tornaram-se visíveis nos pixels, permitindo que as árvores de decisão encontrassem limiares de corte muito mais informativos.
 
-20. **Por que a taxa de compressão do Autoencoder de $8.100:1$ prejudicou o classificador posterior?**
+22. **Por que a taxa de compressão do Autoencoder de $8.100:1$ prejudicou o classificador posterior?**
     * *Resposta esperada:* Comprimir $518.400$ valores em um vetor latente $Z$ de apenas 64 dimensões ultrapassou a capacidade representacional do gargalo, descartando informações essenciais de engajamento para focar apenas em iluminâncias médias.
 
-21. **Qual é o papel da aceleração por GPU no pipeline em alta resolução nativa?**
+23. **Qual é o papel da aceleração por GPU no pipeline em alta resolução nativa?**
     * *Resposta esperada:* A GPU executa operações tensoriais em arquitetura massivamente paralela (SIMT), reduzindo o tempo de processamento de convoluções e retropropagação de várias horas em CPU para menos de dois minutos.
 
 
@@ -235,51 +252,51 @@ O modelo prevê o alcance do vídeo dentro de um fator médio de $\approx 7 \tim
 
 ---
 
-### ❓ 15 Questões de Revisão Técnica — Dia 2: Regressão Contínua (Questões 22 a 36)
+### ❓ 15 Questões de Revisão Técnica — Dia 2: Regressão Contínua (Questões 24 a 38)
 
-22. **Por que o modelo treinado diretamente na contagem bruta de visualizações desestabilizaria o gradiente?**
+24. **Por que o modelo treinado diretamente na contagem bruta de visualizações desestabilizaria o gradiente?**
     * *Resposta esperada:* Porque a distribuição segue uma lei de potência com outliers de centenas de milhões de visualizações. O gradiente da perda MSE é proporcional ao erro linear $(y - \hat{y})$, fazendo com que poucos vídeos virais gerassem gradientes gigantescos que destruiriam os pesos da rede.
 
-23. **Qual é o papel da transformação logarítmica $y_{\log} = \log_{10}(\text{views} + 1)$?**
+25. **Qual é o papel da transformação logarítmica $y_{\log} = \log_{10}(\text{views} + 1)$?**
     * *Resposta esperada:* Estabilizar a variância residual (garantir homocedasticidade) e comprimir as ordens de magnitude em uma distribuição simétrica próxima da normal, permitindo que o otimizador trate pequenos e grandes canais de forma equilibrada.
 
-24. **Por que somamos $+1$ dentro do logaritmo ($\log_{10}(\text{views} + 1)$)?**
+26. **Por que somamos $+1$ dentro do logaritmo ($\log_{10}(\text{views} + 1)$)?**
     * *Resposta esperada:* Para garantir estabilidade matemática quando $\text{views} = 0$, uma vez que $\log(0)$ é indefinido ($-\infty$), além de garantir que $\log_{10}(0 + 1) = 0$.
 
-25. **Como garantimos ausência de vazamento de dados (*data leakage*) no `StandardScaler` da regressão?**
+27. **Como garantimos ausência de vazamento de dados (*data leakage*) no `StandardScaler` da regressão?**
     * *Resposta esperada:* Ajustando os parâmetros de média ($\mu$) e desvio padrão ($\sigma$) estritamente sobre os dados de treino (`scaler.fit_transform`), e apenas aplicando esses parâmetros congelados nos conjuntos de validação e teste (`scaler.transform`).
 
-26. **Por que o $R^2$ na escala linear de visualizações resultou em valores negativos (~ -0,008)?**
+28. **Por que o $R^2$ na escala linear de visualizações resultou em valores negativos (~ -0,008)?**
     * *Resposta esperada:* Porque a métrica $R^2$ quadrática é hipersensível a outliers extremos. Erros em vídeos com mais de 200 milhões de views elevam a soma dos quadrados dos resíduos além da variância total, gerando $R^2 < 0$, mesmo que o modelo acerte a grande maioria dos vídeos comuns.
 
-27. **O que significa fisicamente obter um $\text{MAE}_{\log} = 0{,}8457$ em escala logarítmica?**
+29. **O que significa fisicamente obter um $\text{MAE}_{\log} = 0{,}8457$ em escala logarítmica?**
     * *Resposta esperada:* Significa que a predição média do modelo erra por um fator de $10^{0{,}8457} \approx 7 \times$ a ordem de grandeza real do vídeo, o que é uma estimativa consistente em uma plataforma onde as visualizações variam por um fator de mais de $1.000.000 \times$.
 
-28. **Por que o Random Forest nos pixels brutos superou todas as redes neurais em $480 \times 360$ ($R^2_{\log} = 6{,}89\%$)?**
+30. **Por que o Random Forest nos pixels brutos superou todas as redes neurais em $480 \times 360$ ($R^2_{\log} = 6{,}89\%$)?**
     * *Resposta esperada:* Porque o ensemble de árvores com `max_features='sqrt'` particiona os pixels nítidos de alta resolução em limiares ortogonais livres de gradiente, identificando elementos de alto contraste e textos de *clickbait* sem sofrer com a maldição da dimensionalidade.
 
-29. **O que causou o travamento inicial do `RandomForestRegressor` em alta resolução no cluster?**
+31. **O que causou o travamento inicial do `RandomForestRegressor` em alta resolução no cluster?**
     * *Resposta esperada:* Por padrão no scikit-learn, o `RandomForestRegressor` adota `max_features=1.0` (avalia todas as $518.400$ features em cada nó), ao contrário do classificador que usa `sqrt`. Isso aumentou a carga computacional em mais de $720 \times$, travando a CPU na ordenação contínua de matrizes.
 
-30. **Como a alteração para `max_features='sqrt'` resolveu o problema de complexidade do Random Forest?**
+32. **Como a alteração para `max_features='sqrt'` resolveu o problema de complexidade do Random Forest?**
     * *Resposta esperada:* Reduziu o espaço de busca de $518.400$ para $\sqrt{518.400} = 720$ variáveis aleatórias por nó, acelerando o treinamento em mais de 700 vezes e concluindo em menos de 30 segundos.
 
-31. **Por que o desempenho da MLP degradou de $R^2_{\log} = 4{,}92\%$ em $64 \times 64$ para $2{,}24\%$ em $480 \times 360$?**
+33. **Por que o desempenho da MLP degradou de $R^2_{\log} = 4{,}92\%$ em $64 \times 64$ para $2{,}24\%$ em $480 \times 360$?**
     * *Resposta esperada:* Devido à *Maldição da Dimensionalidade*. A primeira camada linear inflou para mais de 265 milhões de parâmetros para apenas 1.186 exemplos de treino, forçando a rede a memorizar ruídos e perder poder de generalização.
 
-32. **Por que a CNN 2D apresentou a maior evolução positiva ($\Delta R^2_{\log} = +3{,}29\%$) com o aumento da resolução?**
+34. **Por que a CNN 2D apresentou a maior evolução positiva ($\Delta R^2_{\log} = +3{,}29\%$) com o aumento da resolução?**
     * *Resposta esperada:* Porque os kernels convolucionais combinados com `AdaptiveAvgPool2d` mantiveram o número de parâmetros constante (~358 mil) enquanto extraíram feições ricas e nítidas dos pixels em alta definição, permitindo capturar texturas e expressões faciais informativas.
 
-33. **Por que o Random Forest treinado nos embeddings do Autoencoder teve o pior $R^2_{\log}$ (-10,46%)?**
+35. **Por que o Random Forest treinado nos embeddings do Autoencoder teve o pior $R^2_{\log}$ (-10,46%)?**
     * *Resposta esperada:* O gargalo de compressão latente de $8.100:1$ ($518.400 \to 64$) reteve apenas a iluminação de fundo e cores médias para reconstrução geométrica, descartando sinais locais correlacionados à variação contínua de engajamento.
 
-34. **Qual é a diferença fundamental entre as saídas das redes de classificação e de regressão implementadas?**
+36. **Qual é a diferença fundamental entre as saídas das redes de classificação e de regressão implementadas?**
     * *Resposta esperada:* Na classificação, a camada final projeta para $2$ logits com perda Cross-Entropy; na regressão, a camada final projeta para $1$ único neurônio linear contínuo com perda MSE, sem função de ativação de corte.
 
-35. **O que o gráfico de distribuição de resíduos centrado em zero comprova?**
+37. **O que o gráfico de distribuição de resíduos centrado em zero comprova?**
     * *Resposta esperada:* Comprova que as predições não possuem viés sistemático de calibração; os erros estão uniformemente distribuídos entre superestimar e subestimar, validando a eficácia da normalização logarítmica.
 
-36. **Como as predições na escala logarítmica são convertidas para visualizações no mundo real?**
+38. **Como as predições na escala logarítmica são convertidas para visualizações no mundo real?**
     * *Resposta esperada:* Invertendo a padronização via desvio e média do treino ($\hat{y}_{\log} = \hat{z} \cdot \sigma + \mu$) e aplicando a função exponencial inversa com corte não-negativo: $\widehat{\text{views}} = \max(0, \; 10^{\hat{y}_{\log}} - 1)$.
 
 ---
@@ -363,36 +380,36 @@ A largura de banda da memória HBM2e da A100 ($2.039\text{ GB/s}$) e os Tensor C
 
 ---
 
-## 4. Banco de Arguição Oral — Dia 3: Embeddings e Custo Computacional (Questões 37 a 46)
+## 4. Banco de Arguição Oral — Dia 3: Embeddings e Custo Computacional (Questões 39 a 48)
 
-37. **O que é o gargalo latente $Z$ e qual é a função da camada Sigmoid no final do Decoder?**
+39. **O que é o gargalo latente $Z$ e qual é a função da camada Sigmoid no final do Decoder?**
     * *Resposta esperada:* O gargalo latente $Z \in \mathbb{R}^{64}$ é a menor camada do autoencoder, cuja dimensão reduzida força a rede a descartar ruídos e reter apenas as características determinantes para a reconstrução. A ativação Sigmoid no final do decoder é mandatória porque os tensores de entrada foram normalizados no intervalo $[0, 1]$, garantindo que as intensidades dos canais RGB reconstruídos estejam limitadas a esse mesmo espaço físico contínuo.
 
-38. **Por que o modelo clássico Random Forest treinado sobre os embeddings $Z$ foi de $5\times$ a $14\times$ mais rápido do que treinado sobre os pixels $X$?**
+40. **Por que o modelo clássico Random Forest treinado sobre os embeddings $Z$ foi de $5\times$ a $14\times$ mais rápido do que treinado sobre os pixels $X$?**
     * *Resposta esperada:* Devido à complexidade computacional da divisão de nós em árvores de decisão. Para $N$ amostras e dimensão $D$, avaliar os pontos de corte candidatos custa $\mathcal{O}(N \cdot D \log N)$. Em baixa resolução ($64\times 64$), reduzir a dimensão de $d = 12.288$ para $k = 64$ ($192\times$ menor) acelerou o treino de $8{,}14\text{ s}$ para $1{,}50\text{ s}$ ($5{,}4\times$). Na resolução nativa máxima ($480 \times 360$), a redução de $d = 518.400$ para $k = 64$ ($8.100\times$ menor) fez o tempo de treino do classificador despencar de $2{,}28\text{ s}$ para **$0{,}16\text{ s}$ ($14{,}2\times$ mais rápido)** e na regressão de $2{,}70\text{ s}$ para **$0{,}13\text{ s}$ ($20{,}8\times$ mais rápido)**.
 
-39. **Por que o Autoencoder gerou uma acurácia maior em classificação com Random Forest ($59{,}22\%$) do que o Random Forest com pixels brutos ($56{,}08\%$) em 64x64?**
+41. **Por que o Autoencoder gerou uma acurácia maior em classificação com Random Forest ($59{,}22\%$) do que o Random Forest com pixels brutos ($56{,}08\%$) em 64x64?**
     * *Resposta esperada:* Porque a compressão latente atuou como um **filtro regularizador de remoção de ruído (*denoising/manifold filtering*)**. Os pixels brutos de uma imagem redimensionada para $64 \times 64$ contêm ruídos de interpolação e redundância espacial que podem iludir as árvores. As convoluções do encoder sintetizaram feições visuais agregadas, facilitando a partição ortogonal do ensemble.
 
-40. **Por que o PCA e o t-SNE apresentaram distribuições visuais diferentes para os mesmos embeddings $Z$?**
+42. **Por que o PCA e o t-SNE apresentaram distribuições visuais diferentes para os mesmos embeddings $Z$?**
     * *Resposta esperada:* Porque o PCA é um método linear que busca eixos ortogonais de máxima variância global, tendendo a aglomerar pontos em uma nuvem elipsoidal contínua quando a variedade subjacente é não-linear. O t-SNE, por sua vez, é um método estocástico não-linear baseado em divergência de Kullback-Leibler que prioriza a conservação das probabilidades de vizinhança local, conseguindo separar variedades dobradas em agrupamentos semânticos mais nítidos.
 
-41. **Qual é a função da distribuição $t$-Student no espaço projetado do t-SNE e por que não se usa uma Gaussiana em 2D?**
+43. **Qual é a função da distribuição $t$-Student no espaço projetado do t-SNE e por que não se usa uma Gaussiana em 2D?**
     * *Resposta esperada:* Para resolver o "problema de aglomeração" (*crowding problem*). Em alta dimensão ($64D$), há um volume hiperesférico imenso para acomodar pontos moderadamente distantes. Em 2D, a área disponível é muito menor. A distribuição $t$-Student possui caudas muito mais pesadas ($1 / (1 + d^2)$) que a Gaussiana ($e^{-d^2}$), o que repele pontos moderadamente distantes para a periferia, abrindo espaço visual para que agrupamentos locais não fiquem todos sobrepostos no centro da projeção.
 
-42. **O que a análise visual de reconstrução (painel Original vs. Reconstruída) evidenciou sobre a representação aprendida?**
+44. **O que a análise visual de reconstrução (painel Original vs. Reconstruída) evidenciou sobre a representação aprendida?**
     * *Resposta esperada:* Evidenciou que o Autoencoder convolucional prioriza grandezas de baixa frequência espacial (luminância média, blocos de cor quente vs. fria e silhuetas de rostos), mas borra e perde completamente letras de fontes pequenas e textos estilizados. Isso ocorre porque o critério MSE calcula a média quadrática pixel a pixel, penalizando severamente o erro em grandes áreas coloridas e tratando o texto fino como ruído de alta frequência estatisticamente irrelevante.
 
-43. **Por que a MLP possui 18 vezes mais parâmetros que a CNN, mas apresentou latência de inferência cerca de 20 vezes menor em CPU?**
+45. **Por que a MLP possui 18 vezes mais parâmetros que a CNN, mas apresentou latência de inferência cerca de 20 vezes menor em CPU?**
     * *Resposta esperada:* Porque uma camada linear totalmente conectada é uma operação direta de multiplicação matriz-vetor (GEMM) que é altamente otimizada em hardware com paralelismo SIMD (como SSE/AVX em CPUs x86). Já as convoluções 2D exigem aninhamento de loops, transformações de janela (`im2col`), e camadas intermediárias de `BatchNorm` e `MaxPool`, demandando mais saltos de ponteiros de memória (*memory bandwidth*) e profundidade de grafo computacional, resultando em maior latência temporal.
 
-44. **O que é o Throughput de inferência (medido em FPS) e por que ele deve ser avaliado junto com a latência?**
+46. **O que é o Throughput de inferência (medido em FPS) e por que ele deve ser avaliado junto com a latência?**
     * *Resposta esperada:* A latência mede o tempo de resposta pontual de uma requisição (quanto tempo 1 batch leva para sair), enquanto o Throughput (Frames Per Second) mede a capacidade total de vazão do sistema ($N / \Delta t$). Em sistemas de recomendação em tempo real do YouTube que precisam filtrar milhões de thumbnails por segundo, um modelo com throughput de $1.500\text{ FPS}$ (como a MLP) pode ser preferível em pré-filtragem, enquanto um modelo de alta precisão e menor throughput (como a ResNet a $32\text{ FPS}$) é reservado para o ranqueamento final.
 
-45. **Por que a ResNet 2D apresentou a maior latência de inferência entre todas as arquiteturas avaliadas?**
+47. **Por que a ResNet 2D apresentou a maior latência de inferência entre todas as arquiteturas avaliadas?**
     * *Resposta esperada:* Devido à complexidade do grafo computacional e aos blocos residuais. A cada bloco residual, o tensor precisa ser bifurcado, processado por duas convoluções consecutivas com normalização e depois somado ponto a ponto com o fluxo de identidade ($F(x) + x$). Essa adição residual e a profundidade de camadas exigem mais alocações de tensores intermediários e sincronizações de memória, elevando o tempo de execução por lote.
 
-46. **Diante de todos os resultados (Acurácia, $R^2$, Embeddings e Latência), qual solução arquitetural você defenderia como a mais viável para a indústria?**
+48. **Diante de todos os resultados (Acurácia, $R^2$, Embeddings e Latência), qual solução arquitetural você defenderia como a mais viável para a indústria?**
     * *Resposta esperada:* Defenderia uma **arquitetura híbrida em dois estágios**:
       1. Para **Classificação de Virais de Alto Risco**, a **ResNet 2D** é a escolha ideal, pois seu recall de $93{,}48\%$ garante que quase nenhum conteúdo de alto potencial seja descartado.
       2. Para **Regressão Contínua em Larga Escala**, o **Random Forest** calibrado com `max_features='sqrt'` em alta resolução (ou treinado sobre embeddings latentes $Z$) oferece a melhor relação custo-benefício, entregando o maior $R^2_{\log}$ ($+6{,}89\%$) com treinamento em frações de segundo e imunidade a problemas de convergência por gradiente.
